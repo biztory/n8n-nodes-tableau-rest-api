@@ -23,6 +23,8 @@ A subset of the [Tableau REST API endpoints](https://help.tableau.com/current/ap
 
 The node currently supports Tableau Connected Apps as an authentication method. See: [Tableau REST API authentication](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_concepts_auth.htm#make-a-sign-in-request-with-jwt).
 
+More authentication methods may be made available in the future.
+
 ## Compatibility
 
 Tested with n8n@2.14.2 and later.
