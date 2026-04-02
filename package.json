@@ -1,19 +1,19 @@
 {
-    "name": "n8n-nodes-tableau-rest-api",
+    "name": "@biztory/n8n-nodes-tableau-rest-api",
     "version": "0.1.0",
     "description": "n8n community node for the Tableau REST API",
     "license": "MIT",
     "homepage": "",
     "keywords": [
-        "n8n-community-node-package"
+        "n8n-community-node-package", "tableau", "rest api", "data", "analytics", "business intelligence"
     ],
     "author": {
         "name": "Timothy Vermeiren",
-        "email": "timothy@example.com"
+        "email": "timothy.vermeiren@biztory.be"
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/timothyvermeiren/n8n-nodes-tableau-rest-api.git"
+        "url": "https://github.com/biztory/n8n-nodes-tableau-rest-api.git"
     },
    "scripts": {
 		"build": "n8n-node build",
