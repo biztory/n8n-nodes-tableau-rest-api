@@ -23,8 +23,11 @@ import {
 	tableauSignOut,
 	tableauApiRequest,
 	tableauApiBinaryRequest,
+	tableauApiFileDownloadRequest,
+	tableauApiMultipartRequest,
 	tableauApiRequestAllItems,
 	tableauApiRequestWithLimit,
+	extractItems,
 } from './shared/transport';
 import { buildVfFilters } from './resources/view/download';
 import type { TableauCredentials } from './shared/types';
@@ -161,7 +164,31 @@ export class TableauRestApi implements INodeType {
 					}
 
 				} else if (resource === 'workbook') {
-					if (operation === 'get') {
+					if (operation === 'download') {
+						const workbookId = this.getNodeParameter('workbookId', i) as string;
+						const options = this.getNodeParameter('options', i) as IDataObject;
+						const qs: IDataObject = {};
+						if (options.includeExtract === false) {
+							qs.includeExtract = 'false';
+						}
+
+						const { buffer, filename } = await tableauApiFileDownloadRequest(
+							this, `/workbooks/${workbookId}/content`, credentials, qs,
+						);
+
+						const resolvedFilename = filename ?? `workbook-${workbookId}.twbx`;
+						const mimeType = resolvedFilename.endsWith('.twb')
+							? 'application/xml'
+							: 'application/octet-stream';
+
+						const binaryData = await this.helpers.prepareBinaryData(buffer, resolvedFilename, mimeType);
+						returnData.push({
+							json: { workbookId, fileName: resolvedFilename, mimeType },
+							binary: { data: binaryData },
+							pairedItem: { item: i },
+						});
+
+					} else if (operation === 'get') {
 						const workbookId = this.getNodeParameter('workbookId', i) as string;
 						const response = await tableauApiRequest(
 							this,
@@ -193,6 +220,67 @@ export class TableauRestApi implements INodeType {
 						for (const item of results) {
 							returnData.push({ json: item, pairedItem: { item: i } });
 						}
+
+					} else if (operation === 'getViews') {
+						const workbookId = this.getNodeParameter('workbookId', i) as string;
+						const options = this.getNodeParameter('options', i) as IDataObject;
+						const qs: IDataObject = {};
+						if (options.includeUsageStatistics) {
+							qs.includeUsageStatistics = 'true';
+						}
+
+						const response = await tableauApiRequest(
+							this, 'GET', `/workbooks/${workbookId}/views`, credentials, qs,
+						);
+						const views = extractItems(response, 'views');
+						for (const view of views) {
+							returnData.push({ json: view, pairedItem: { item: i } });
+						}
+
+					} else if (operation === 'publish') {
+						const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i) as string;
+						const workbookName = this.getNodeParameter('workbookName', i) as string;
+						const projectId = this.getNodeParameter('projectId', i) as string;
+						const options = this.getNodeParameter('options', i) as IDataObject;
+
+						const binaryData = this.helpers.assertBinaryData(i, binaryPropertyName);
+						const fileBuffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
+
+						const workbookAttrs: string[] = [`name="${xmlAttr(workbookName)}"`];
+						if (options.description) {
+							workbookAttrs.push(`description="${xmlAttr(options.description as string)}"`);
+						}
+						if (options.showTabs !== undefined) {
+							workbookAttrs.push(`showTabs="${options.showTabs as boolean}"`);
+						}
+
+						const xmlPayload = `<?xml version='1.0' encoding='UTF-8' ?>
+<tsRequest>
+  <workbook ${workbookAttrs.join(' ')}>
+    <project id="${xmlAttr(projectId)}" />
+  </workbook>
+</tsRequest>`;
+
+						const qs: IDataObject = {};
+						if (options.overwrite) {
+							qs.overwrite = 'true';
+						}
+
+						const resolvedFileName = (options.fileName as string | undefined)
+							|| binaryData.fileName
+							|| 'workbook.twbx';
+
+						const response = await tableauApiMultipartRequest(
+							this,
+							'/workbooks',
+							credentials,
+							xmlPayload,
+							fileBuffer,
+							resolvedFileName,
+							qs,
+						);
+						const workbook = (response.workbook ?? response) as IDataObject;
+						returnData.push({ json: workbook, pairedItem: { item: i } });
 
 					} else if (operation === 'update') {
 						const workbookId = this.getNodeParameter('workbookId', i) as string;
@@ -460,4 +548,13 @@ function buildUserFilterQs(
 	if (filters.siteRole) filterParts.push(`siteRole:eq:${filters.siteRole as string}`);
 	if (filters.lastLoginAfter) filterParts.push(`lastLogin:gte:${filters.lastLoginAfter as string}`);
 	return buildFilterAndSort(filterParts, sort);
+}
+
+/** Escape a string for use in an XML attribute value (double-quoted). */
+function xmlAttr(str: string): string {
+	return str
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;');
 }

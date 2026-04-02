@@ -269,6 +269,105 @@ export async function tableauApiBinaryRequest(
 }
 
 /**
+ * Make an authenticated GET request that returns raw binary data along with the
+ * filename suggested by the API's Content-Disposition response header.
+ *
+ * Used for endpoints like Download Workbook where the file format (.twb/.twbx)
+ * is not known ahead of time and must be inferred from the response.
+ */
+export async function tableauApiFileDownloadRequest(
+	context: IExecuteFunctions,
+	endpoint: string,
+	credentials: TableauCredentials,
+	qs: IDataObject = {},
+): Promise<{ buffer: Buffer; filename: string | undefined }> {
+	return withAuthRetry(context, credentials, async (authToken) => {
+		const response = await context.helpers.httpRequest({
+			method: 'GET',
+			url: siteUrl(credentials, authToken, endpoint),
+			headers: {
+				'X-Tableau-Auth': authToken.token,
+			},
+			qs,
+			returnFullResponse: true,
+			encoding: 'arraybuffer',
+		} as IHttpRequestOptions) as { body: ArrayBuffer; headers: Record<string, string | string[]> };
+
+		// Extract filename from Content-Disposition header.
+		// Tableau sends: attachment; name="tableau_workbook"; filename="My Workbook.twbx"
+		let filename: string | undefined;
+		const rawHeader = response.headers?.['content-disposition'];
+		const contentDisposition = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+		if (contentDisposition) {
+			const match = /filename="([^"]+)"/.exec(contentDisposition);
+			if (match?.[1]) {
+				filename = match[1];
+			}
+		}
+
+		return { buffer: Buffer.from(response.body), filename };
+	});
+}
+
+/**
+ * Make an authenticated multipart/form-data POST request to the Tableau REST API.
+ *
+ * Used for publishing workbooks. The request contains two parts:
+ *   1. request_payload — XML metadata (workbook name, project, options)
+ *   2. file            — the raw .twb or .twbx file binary
+ */
+export async function tableauApiMultipartRequest(
+	context: IExecuteFunctions,
+	endpoint: string,
+	credentials: TableauCredentials,
+	xmlPayload: string,
+	fileBuffer: Buffer,
+	fileName: string,
+	qs: IDataObject = {},
+): Promise<IDataObject> {
+	return withAuthRetry(context, credentials, async (authToken) => {
+		// Tableau's publish endpoint requires multipart/mixed (not multipart/form-data).
+		// We build the body manually so we control both the boundary and the part
+		// Content-Type headers exactly as the API expects.
+		const boundary = `tableau_boundary_${randomUUID().replace(/-/g, '')}`;
+		const safeFileName = fileName.replace(/"/g, '\\"');
+
+		const body = Buffer.concat([
+			Buffer.from(`--${boundary}\r\n`),
+			Buffer.from('Content-Disposition: name="request_payload"\r\n'),
+			Buffer.from('Content-Type: text/xml; charset=UTF-8\r\n'),
+			Buffer.from('\r\n'),
+			Buffer.from(xmlPayload, 'utf-8'),
+			Buffer.from('\r\n'),
+			Buffer.from(`--${boundary}\r\n`),
+			Buffer.from(`Content-Disposition: name="tableau_workbook"; filename="${safeFileName}"\r\n`),
+			Buffer.from('Content-Type: application/octet-stream\r\n'),
+			Buffer.from('\r\n'),
+			fileBuffer,
+			Buffer.from('\r\n'),
+			Buffer.from(`--${boundary}--\r\n`),
+		]);
+
+		const rawResponse = await context.helpers.httpRequest({
+			method: 'POST',
+			url: siteUrl(credentials, authToken, endpoint),
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': `multipart/mixed; boundary="${boundary}"`,
+				'X-Tableau-Auth': authToken.token,
+			},
+			body,
+			qs,
+		} as IHttpRequestOptions);
+
+		if (typeof rawResponse === 'string') {
+			return JSON.parse(rawResponse) as IDataObject;
+		}
+		return rawResponse as IDataObject;
+	});
+}
+
+/**
  * Sign out from the Tableau REST API and invalidate the local token cache.
  *
  * The sign-out call is best-effort: if the token has already expired or the
