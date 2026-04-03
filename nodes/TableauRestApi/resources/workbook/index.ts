@@ -1,9 +1,11 @@
 import type { INodeProperties } from 'n8n-workflow';
+import { workbookDeleteDescription } from './delete';
 import { workbookDownloadDescription } from './download';
 import { workbookGetDescription } from './get';
 import { workbookGetManyDescription } from './getAll';
 import { workbookGetViewsDescription } from './getViews';
 import { workbookPublishDescription } from './publish';
+import { workbookRefreshDescription } from './refresh';
 import { workbookUpdateDescription } from './update';
 
 export const workbookOperations: INodeProperties[] = [
@@ -18,6 +20,12 @@ export const workbookOperations: INodeProperties[] = [
 			},
 		},
 		options: [
+			{
+				name: 'Delete',
+				value: 'delete',
+				action: 'Delete a workbook',
+				description: 'Delete a workbook from the site',
+			},
 			{
 				name: 'Download',
 				value: 'download',
@@ -49,6 +57,12 @@ export const workbookOperations: INodeProperties[] = [
 				description: 'Publish a workbook file (.twb or .twbx) to the site',
 			},
 			{
+				name: 'Refresh',
+				value: 'refresh',
+				action: 'Refresh a workbook',
+				description: 'Trigger an extract refresh for a workbook',
+			},
+			{
 				name: 'Update',
 				value: 'update',
 				action: 'Update a workbook',
@@ -60,10 +74,12 @@ export const workbookOperations: INodeProperties[] = [
 ];
 
 export const workbookFields: INodeProperties[] = [
+	...workbookDeleteDescription,
 	...workbookDownloadDescription,
 	...workbookGetDescription,
 	...workbookGetManyDescription,
 	...workbookGetViewsDescription,
 	...workbookPublishDescription,
+	...workbookRefreshDescription,
 	...workbookUpdateDescription,
 ];

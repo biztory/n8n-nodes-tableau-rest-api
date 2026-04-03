@@ -1,9 +1,11 @@
 import type { INodeProperties } from 'n8n-workflow';
+import { datasourceDeleteDescription } from './delete';
 import { datasourceDownloadDescription } from './download';
 import { datasourceGetDescription } from './get';
 import { datasourceGetManyDescription } from './getAll';
 import { datasourceGetConnectionsDescription } from './getConnections';
 import { datasourcePublishDescription } from './publish';
+import { datasourceRefreshDescription } from './refresh';
 import { datasourceUpdateDescription } from './update';
 
 export const datasourceOperations: INodeProperties[] = [
@@ -18,6 +20,12 @@ export const datasourceOperations: INodeProperties[] = [
 			},
 		},
 		options: [
+			{
+				name: 'Delete',
+				value: 'delete',
+				action: 'Delete a data source',
+				description: 'Delete a data source from the site',
+			},
 			{
 				name: 'Download',
 				value: 'download',
@@ -49,6 +57,12 @@ export const datasourceOperations: INodeProperties[] = [
 				description: 'Publish a data source file (.tds or .tdsx) to the site',
 			},
 			{
+				name: 'Refresh',
+				value: 'refresh',
+				action: 'Refresh a data source',
+				description: 'Trigger an extract refresh for a data source',
+			},
+			{
 				name: 'Update',
 				value: 'update',
 				action: 'Update a data source',
@@ -60,10 +74,12 @@ export const datasourceOperations: INodeProperties[] = [
 ];
 
 export const datasourceFields: INodeProperties[] = [
+	...datasourceDeleteDescription,
 	...datasourceDownloadDescription,
 	...datasourceGetDescription,
 	...datasourceGetConnectionsDescription,
 	...datasourceGetManyDescription,
 	...datasourcePublishDescription,
+	...datasourceRefreshDescription,
 	...datasourceUpdateDescription,
 ];

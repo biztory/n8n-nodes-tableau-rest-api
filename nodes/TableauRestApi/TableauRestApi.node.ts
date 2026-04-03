@@ -16,6 +16,7 @@ import {
 import { authOperations } from './resources/auth';
 import { datasourceOperations, datasourceFields } from './resources/datasource';
 import { groupOperations, groupFields } from './resources/group';
+import { projectOperations, projectFields } from './resources/project';
 import { workbookOperations, workbookFields } from './resources/workbook';
 import { viewOperations, viewFields } from './resources/view';
 import { userOperations, userFields } from './resources/user';
@@ -65,6 +66,7 @@ export class TableauRestApi implements INodeType {
 					{ name: 'Authentication', value: 'auth' },
 					{ name: 'Data Source', value: 'datasource' },
 					{ name: 'Group', value: 'group' },
+					{ name: 'Project', value: 'project' },
 					{ name: 'User', value: 'user' },
 					{ name: 'View', value: 'view' },
 					{ name: 'Workbook', value: 'workbook' },
@@ -76,6 +78,8 @@ export class TableauRestApi implements INodeType {
 			...datasourceFields,
 			...groupOperations,
 			...groupFields,
+			...projectOperations,
+			...projectFields,
 			...userOperations,
 			...userFields,
 			...viewOperations,
@@ -172,7 +176,12 @@ export class TableauRestApi implements INodeType {
 					}
 
 				} else if (resource === 'workbook') {
-					if (operation === 'download') {
+					if (operation === 'delete') {
+						const workbookId = this.getNodeParameter('workbookId', i) as string;
+						await tableauApiRequest(this, 'DELETE', `/workbooks/${workbookId}`, credentials);
+						returnData.push({ json: { success: true, workbookId }, pairedItem: { item: i } });
+
+					} else if (operation === 'download') {
 						const workbookId = this.getNodeParameter('workbookId', i) as string;
 						const options = this.getNodeParameter('options', i) as IDataObject;
 						const qs: IDataObject = {};
@@ -327,6 +336,14 @@ export class TableauRestApi implements INodeType {
 						);
 						const workbook = (response.workbook ?? response) as IDataObject;
 						returnData.push({ json: workbook, pairedItem: { item: i } });
+
+					} else if (operation === 'refresh') {
+						const workbookId = this.getNodeParameter('workbookId', i) as string;
+						const response = await tableauApiRequest(
+							this, 'POST', `/workbooks/${workbookId}/refresh`, credentials,
+						);
+						const job = (response.job ?? response) as IDataObject;
+						returnData.push({ json: job, pairedItem: { item: i } });
 					}
 
 				} else if (resource === 'view') {
@@ -446,7 +463,12 @@ export class TableauRestApi implements INodeType {
 					}
 
 				} else if (resource === 'datasource') {
-					if (operation === 'download') {
+					if (operation === 'delete') {
+						const datasourceId = this.getNodeParameter('datasourceId', i) as string;
+						await tableauApiRequest(this, 'DELETE', `/datasources/${datasourceId}`, credentials);
+						returnData.push({ json: { success: true, datasourceId }, pairedItem: { item: i } });
+
+					} else if (operation === 'download') {
 						const datasourceId = this.getNodeParameter('datasourceId', i) as string;
 						const options = this.getNodeParameter('options', i) as IDataObject;
 						const qs: IDataObject = {};
@@ -587,6 +609,14 @@ export class TableauRestApi implements INodeType {
 						);
 						const datasource = (response.datasource ?? response) as IDataObject;
 						returnData.push({ json: datasource, pairedItem: { item: i } });
+
+					} else if (operation === 'refresh') {
+						const datasourceId = this.getNodeParameter('datasourceId', i) as string;
+						const response = await tableauApiRequest(
+							this, 'POST', `/datasources/${datasourceId}/refresh`, credentials,
+						);
+						const job = (response.job ?? response) as IDataObject;
+						returnData.push({ json: job, pairedItem: { item: i } });
 					}
 
 				} else if (resource === 'group') {
@@ -677,6 +707,80 @@ export class TableauRestApi implements INodeType {
 						);
 						const group = (response.group ?? response) as IDataObject;
 						returnData.push({ json: group, pairedItem: { item: i } });
+					}
+
+				} else if (resource === 'project') {
+					if (operation === 'create') {
+						const name = this.getNodeParameter('name', i) as string;
+						const options = this.getNodeParameter('options', i) as IDataObject;
+						const projectBody: IDataObject = { name };
+						if (options.description !== undefined && options.description !== '') {
+							projectBody.description = options.description;
+						}
+						if (options.parentProjectId) {
+							projectBody.parentProjectId = options.parentProjectId;
+						}
+						if (options.contentPermissions) {
+							projectBody.contentPermissions = options.contentPermissions;
+						}
+						const response = await tableauApiRequest(
+							this, 'POST', '/projects', credentials, {}, { project: projectBody },
+						);
+						const project = (response.project ?? response) as IDataObject;
+						returnData.push({ json: project, pairedItem: { item: i } });
+
+					} else if (operation === 'delete') {
+						const projectId = this.getNodeParameter('projectId', i) as string;
+						await tableauApiRequest(this, 'DELETE', `/projects/${projectId}`, credentials);
+						returnData.push({ json: { success: true, projectId }, pairedItem: { item: i } });
+
+					} else if (operation === 'getAll') {
+						const returnAll = this.getNodeParameter('returnAll', i) as boolean;
+						const filters = this.getNodeParameter('filters', i) as IDataObject;
+						const sort = this.getNodeParameter('sort', i) as IDataObject;
+						const qs = buildProjectFilterQs(filters, sort);
+
+						let results: IDataObject[];
+						if (returnAll) {
+							results = await tableauApiRequestAllItems(
+								this, 'GET', '/projects', credentials, 'projects', qs,
+							);
+						} else {
+							const limit = this.getNodeParameter('limit', i) as number;
+							results = await tableauApiRequestWithLimit(
+								this, 'GET', '/projects', credentials, 'projects', limit, qs,
+							);
+						}
+
+						for (const item of results) {
+							returnData.push({ json: item, pairedItem: { item: i } });
+						}
+
+					} else if (operation === 'update') {
+						const projectId = this.getNodeParameter('projectId', i) as string;
+						const updateFields = this.getNodeParameter('updateFields', i) as IDataObject;
+						const projectBody: IDataObject = {};
+						if (updateFields.name !== undefined && updateFields.name !== '') {
+							projectBody.name = updateFields.name;
+						}
+						if (updateFields.description !== undefined && updateFields.description !== '') {
+							projectBody.description = updateFields.description;
+						}
+						// parentProjectId can be empty string (moves project to top level)
+						if (updateFields.parentProjectId !== undefined) {
+							projectBody.parentProjectId = updateFields.parentProjectId;
+						}
+						if (updateFields.contentPermissions) {
+							projectBody.contentPermissions = updateFields.contentPermissions;
+						}
+						if (updateFields.ownerId) {
+							projectBody.owner = { id: updateFields.ownerId };
+						}
+						const response = await tableauApiRequest(
+							this, 'PUT', `/projects/${projectId}`, credentials, {}, { project: projectBody },
+						);
+						const project = (response.project ?? response) as IDataObject;
+						returnData.push({ json: project, pairedItem: { item: i } });
 					}
 
 				} else if (resource === 'user') {
@@ -816,6 +920,17 @@ function buildViewFilterQs(
 	if (filters.projectName) filterParts.push(`projectName:eq:${filters.projectName as string}`);
 	if (filters.tags) filterParts.push(`tags:has:${filters.tags as string}`);
 	if (filters.updatedAfter) filterParts.push(`updatedAt:gte:${filters.updatedAfter as string}`);
+	return buildFilterAndSort(filterParts, sort);
+}
+
+function buildProjectFilterQs(
+	filters: IDataObject,
+	sort: IDataObject,
+): IDataObject {
+	const filterParts: string[] = [];
+	if (filters.name) filterParts.push(`name:eq:${filters.name as string}`);
+	if (filters.ownerName) filterParts.push(`ownerName:eq:${filters.ownerName as string}`);
+	if (filters.parentProjectId) filterParts.push(`parentProjectId:eq:${filters.parentProjectId as string}`);
 	return buildFilterAndSort(filterParts, sort);
 }
 
