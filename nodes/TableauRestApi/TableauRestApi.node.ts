@@ -2,12 +2,8 @@ import {
 	NodeConnectionTypes,
 	NodeApiError,
 	NodeOperationError,
-	type ICredentialDataDecryptedObject,
-	type ICredentialTestFunctions,
-	type ICredentialsDecrypted,
 	type IDataObject,
 	type IExecuteFunctions,
-	type INodeCredentialTestResult,
 	type INodeExecutionData,
 	type INodeType,
 	type INodeTypeDescription,
@@ -21,7 +17,6 @@ import { workbookOperations, workbookFields } from './resources/workbook';
 import { viewOperations, viewFields } from './resources/view';
 import { userOperations, userFields } from './resources/user';
 import {
-	signJwt,
 	getAuthToken,
 	tableauSignOut,
 	tableauApiRequest,
@@ -87,52 +82,6 @@ export class TableauRestApi implements INodeType {
 			...workbookOperations,
 			...workbookFields,
 		],
-	};
-
-	methods = {
-		credentialTest: {
-			async tableauRestApiCredentialTest(
-				this: ICredentialTestFunctions,
-				credential: ICredentialsDecrypted<ICredentialDataDecryptedObject>,
-			): Promise<INodeCredentialTestResult> {
-				const credentials = credential.data as unknown as TableauCredentials;
-				const jwt = signJwt(credentials);
-				const baseUrl = credentials.serverUrl.replace(/\/+$/, '');
-				const signInUrl = `${baseUrl}/api/${credentials.apiVersion}/auth/signin`;
-
-				try {
-					// ICredentialTestFunctions only exposes `request`, not `httpRequest`
-					// eslint-disable-next-line @n8n/community-nodes/no-deprecated-workflow-functions
-					await this.helpers.request({
-						method: 'POST',
-						uri: signInUrl,
-						headers: {
-							Accept: 'application/json',
-							'Content-Type': 'application/json',
-						},
-						body: {
-							credentials: {
-								jwt,
-								site: {
-									contentUrl: credentials.siteContentUrl,
-								},
-							},
-						},
-						json: true,
-					});
-
-					return {
-						status: 'OK',
-						message: 'Authentication successful',
-					};
-				} catch (error) {
-					return {
-						status: 'Error',
-						message: `Authentication failed: ${(error as Error).message}`,
-					};
-				}
-			},
-		},
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {

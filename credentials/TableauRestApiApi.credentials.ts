@@ -1,8 +1,5 @@
-import type { ICredentialType, INodeProperties, Icon } from 'n8n-workflow';
+import type { ICredentialTestRequest, ICredentialType, INodeProperties, Icon } from 'n8n-workflow';
 
-// Credential test is handled via testedBy -> tableauRestApiCredentialTest in the node.
-// The linter does not trace testedBy references, so we disable the rule here.
-// eslint-disable-next-line @n8n/community-nodes/credential-test-required
 export class TableauRestApiApi implements ICredentialType {
 	name = 'tableauRestApiApi';
 
@@ -13,7 +10,14 @@ export class TableauRestApiApi implements ICredentialType {
 	documentationUrl =
 		'https://help.tableau.com/current/online/en-us/connected_apps_direct.htm';
 
-	testedBy = 'tableauRestApiCredentialTest';
+	// Tests server connectivity and that the API version is valid.
+	// Full JWT auth is verified on first use — JWT errors surface with
+	// descriptive messages via the TABLEAU_ERROR_GUIDANCE map in transport.ts.
+	test: ICredentialTestRequest = {
+		request: {
+			url: '={{$credentials.serverUrl.replace(/\\/+$/, "") + "/api/" + $credentials.apiVersion + "/serverinfo"}}',
+		},
+	};
 
 	properties: INodeProperties[] = [
 		{
