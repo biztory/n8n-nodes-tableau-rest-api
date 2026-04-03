@@ -1,6 +1,7 @@
 import type { INodeProperties } from 'n8n-workflow';
 import { groupAddUserDescription } from './addUser';
 import { groupCreateDescription } from './create';
+import { groupGetManyDescription } from './getAll';
 import { groupGetUsersInGroupDescription } from './getUsersInGroup';
 import { groupRemoveUserDescription } from './removeUser';
 import { groupUpdateDescription } from './update';
@@ -30,6 +31,12 @@ export const groupOperations: INodeProperties[] = [
 				description: 'Create a new local group on the site',
 			},
 			{
+				name: 'Get Many',
+				value: 'getAll',
+				action: 'Get many groups',
+				description: 'Get many groups on the site',
+			},
+			{
 				name: 'Get Users in Group',
 				value: 'getUsersInGroup',
 				action: 'Get users in a group',
@@ -48,13 +55,14 @@ export const groupOperations: INodeProperties[] = [
 				description: 'Update the properties of a group',
 			},
 		],
-		default: 'getUsersInGroup',
+		default: 'getAll',
 	},
 ];
 
 export const groupFields: INodeProperties[] = [
 	...groupAddUserDescription,
 	...groupCreateDescription,
+	...groupGetManyDescription,
 	...groupGetUsersInGroupDescription,
 	...groupRemoveUserDescription,
 	...groupUpdateDescription,

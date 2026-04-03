@@ -590,7 +590,29 @@ export class TableauRestApi implements INodeType {
 					}
 
 				} else if (resource === 'group') {
-					if (operation === 'addUser') {
+					if (operation === 'getAll') {
+						const returnAll = this.getNodeParameter('returnAll', i) as boolean;
+						const filters = this.getNodeParameter('filters', i) as IDataObject;
+						const sort = this.getNodeParameter('sort', i) as IDataObject;
+						const qs = buildGroupFilterQs(filters, sort);
+
+						let results: IDataObject[];
+						if (returnAll) {
+							results = await tableauApiRequestAllItems(
+								this, 'GET', '/groups', credentials, 'groups', qs,
+							);
+						} else {
+							const limit = this.getNodeParameter('limit', i) as number;
+							results = await tableauApiRequestWithLimit(
+								this, 'GET', '/groups', credentials, 'groups', limit, qs,
+							);
+						}
+
+						for (const item of results) {
+							returnData.push({ json: item, pairedItem: { item: i } });
+						}
+
+					} else if (operation === 'addUser') {
 						const groupId = this.getNodeParameter('groupId', i) as string;
 						const userId = this.getNodeParameter('userId', i) as string;
 						const response = await tableauApiRequest(
@@ -794,6 +816,15 @@ function buildViewFilterQs(
 	if (filters.projectName) filterParts.push(`projectName:eq:${filters.projectName as string}`);
 	if (filters.tags) filterParts.push(`tags:has:${filters.tags as string}`);
 	if (filters.updatedAfter) filterParts.push(`updatedAt:gte:${filters.updatedAfter as string}`);
+	return buildFilterAndSort(filterParts, sort);
+}
+
+function buildGroupFilterQs(
+	filters: IDataObject,
+	sort: IDataObject,
+): IDataObject {
+	const filterParts: string[] = [];
+	if (filters.name) filterParts.push(`name:eq:${filters.name as string}`);
 	return buildFilterAndSort(filterParts, sort);
 }
 
