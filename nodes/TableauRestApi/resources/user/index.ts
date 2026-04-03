@@ -36,7 +36,7 @@ export const userOperations: INodeProperties[] = [
 				description: 'Get many users on the site',
 			},
 			{
-				name: 'Remove from Site',
+				name: 'Remove From Site',
 				value: 'remove',
 				action: 'Remove a user from the site',
 				description: 'Remove a user from the site',
