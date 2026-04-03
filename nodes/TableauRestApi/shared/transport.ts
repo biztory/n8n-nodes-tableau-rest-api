@@ -323,6 +323,7 @@ export async function tableauApiMultipartRequest(
 	xmlPayload: string,
 	fileBuffer: Buffer,
 	fileName: string,
+	filePartName: string,
 	qs: IDataObject = {},
 ): Promise<IDataObject> {
 	return withAuthRetry(context, credentials, async (authToken) => {
@@ -340,7 +341,7 @@ export async function tableauApiMultipartRequest(
 			Buffer.from(xmlPayload, 'utf-8'),
 			Buffer.from('\r\n'),
 			Buffer.from(`--${boundary}\r\n`),
-			Buffer.from(`Content-Disposition: name="tableau_workbook"; filename="${safeFileName}"\r\n`),
+			Buffer.from(`Content-Disposition: name="${filePartName}"; filename="${safeFileName}"\r\n`),
 			Buffer.from('Content-Type: application/octet-stream\r\n'),
 			Buffer.from('\r\n'),
 			fileBuffer,

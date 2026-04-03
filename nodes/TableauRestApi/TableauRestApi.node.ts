@@ -14,6 +14,8 @@ import {
 	type JsonObject,
 } from 'n8n-workflow';
 import { authOperations } from './resources/auth';
+import { datasourceOperations, datasourceFields } from './resources/datasource';
+import { groupOperations, groupFields } from './resources/group';
 import { workbookOperations, workbookFields } from './resources/workbook';
 import { viewOperations, viewFields } from './resources/view';
 import { userOperations, userFields } from './resources/user';
@@ -61,6 +63,8 @@ export class TableauRestApi implements INodeType {
 				noDataExpression: true,
 				options: [
 					{ name: 'Authentication', value: 'auth' },
+					{ name: 'Data Source', value: 'datasource' },
+					{ name: 'Group', value: 'group' },
 					{ name: 'User', value: 'user' },
 					{ name: 'View', value: 'view' },
 					{ name: 'Workbook', value: 'workbook' },
@@ -68,6 +72,10 @@ export class TableauRestApi implements INodeType {
 				default: 'workbook',
 			},
 			...authOperations,
+			...datasourceOperations,
+			...datasourceFields,
+			...groupOperations,
+			...groupFields,
 			...userOperations,
 			...userFields,
 			...viewOperations,
@@ -277,6 +285,7 @@ export class TableauRestApi implements INodeType {
 							xmlPayload,
 							fileBuffer,
 							resolvedFileName,
+							'tableau_workbook',
 							qs,
 						);
 						const workbook = (response.workbook ?? response) as IDataObject;
@@ -436,8 +445,234 @@ export class TableauRestApi implements INodeType {
 						});
 					}
 
+				} else if (resource === 'datasource') {
+					if (operation === 'download') {
+						const datasourceId = this.getNodeParameter('datasourceId', i) as string;
+						const options = this.getNodeParameter('options', i) as IDataObject;
+						const qs: IDataObject = {};
+						if (options.includeExtract === false) {
+							qs.includeExtract = 'false';
+						}
+
+						const { buffer, filename } = await tableauApiFileDownloadRequest(
+							this, `/datasources/${datasourceId}/content`, credentials, qs,
+						);
+
+						const resolvedFilename = filename ?? `datasource-${datasourceId}.tdsx`;
+						const mimeType = resolvedFilename.endsWith('.tds')
+							? 'application/xml'
+							: 'application/octet-stream';
+
+						const binaryData = await this.helpers.prepareBinaryData(buffer, resolvedFilename, mimeType);
+						returnData.push({
+							json: { datasourceId, fileName: resolvedFilename, mimeType },
+							binary: { data: binaryData },
+							pairedItem: { item: i },
+						});
+
+					} else if (operation === 'get') {
+						const datasourceId = this.getNodeParameter('datasourceId', i) as string;
+						const response = await tableauApiRequest(
+							this, 'GET', `/datasources/${datasourceId}`, credentials,
+						);
+						const datasource = (response.datasource ?? response) as IDataObject;
+						returnData.push({ json: datasource, pairedItem: { item: i } });
+
+					} else if (operation === 'getAll') {
+						const returnAll = this.getNodeParameter('returnAll', i) as boolean;
+						const filters = this.getNodeParameter('filters', i) as IDataObject;
+						const sort = this.getNodeParameter('sort', i) as IDataObject;
+						const qs = buildDatasourceFilterQs(filters, sort);
+
+						let results: IDataObject[];
+						if (returnAll) {
+							results = await tableauApiRequestAllItems(
+								this, 'GET', '/datasources', credentials, 'datasources', qs,
+							);
+						} else {
+							const limit = this.getNodeParameter('limit', i) as number;
+							results = await tableauApiRequestWithLimit(
+								this, 'GET', '/datasources', credentials, 'datasources', limit, qs,
+							);
+						}
+
+						for (const item of results) {
+							returnData.push({ json: item, pairedItem: { item: i } });
+						}
+
+					} else if (operation === 'getConnections') {
+						const datasourceId = this.getNodeParameter('datasourceId', i) as string;
+						const response = await tableauApiRequest(
+							this, 'GET', `/datasources/${datasourceId}/connections`, credentials,
+						);
+						const connections = extractItems(response, 'connections');
+						for (const connection of connections) {
+							returnData.push({ json: connection, pairedItem: { item: i } });
+						}
+
+					} else if (operation === 'publish') {
+						const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i) as string;
+						const datasourceName = this.getNodeParameter('datasourceName', i) as string;
+						const projectId = this.getNodeParameter('projectId', i) as string;
+						const options = this.getNodeParameter('options', i) as IDataObject;
+
+						const binaryData = this.helpers.assertBinaryData(i, binaryPropertyName);
+						const fileBuffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
+
+						const datasourceAttrs: string[] = [`name="${xmlAttr(datasourceName)}"`];
+						if (options.description) {
+							datasourceAttrs.push(`description="${xmlAttr(options.description as string)}"`);
+						}
+
+						const xmlPayload = `<?xml version='1.0' encoding='UTF-8' ?>
+<tsRequest>
+  <datasource ${datasourceAttrs.join(' ')}>
+    <project id="${xmlAttr(projectId)}" />
+  </datasource>
+</tsRequest>`;
+
+						const qs: IDataObject = {};
+						if (options.overwrite) {
+							qs.overwrite = 'true';
+						}
+
+						const resolvedFileName = (options.fileName as string | undefined)
+							|| binaryData.fileName
+							|| 'datasource.tdsx';
+
+						const response = await tableauApiMultipartRequest(
+							this,
+							'/datasources',
+							credentials,
+							xmlPayload,
+							fileBuffer,
+							resolvedFileName,
+							'tableau_datasource',
+							qs,
+						);
+						const datasource = (response.datasource ?? response) as IDataObject;
+						returnData.push({ json: datasource, pairedItem: { item: i } });
+
+					} else if (operation === 'update') {
+						const datasourceId = this.getNodeParameter('datasourceId', i) as string;
+						const updateFields = this.getNodeParameter('updateFields', i) as IDataObject;
+
+						const datasourceBody: IDataObject = {};
+						if (updateFields.name !== undefined && updateFields.name !== '') {
+							datasourceBody.name = updateFields.name;
+						}
+						if (updateFields.isCertified !== undefined) {
+							datasourceBody.isCertified = updateFields.isCertified;
+						}
+						if (updateFields.certificationNote !== undefined && updateFields.certificationNote !== '') {
+							datasourceBody.certificationNote = updateFields.certificationNote;
+						}
+						if (updateFields.encryptExtracts !== undefined) {
+							datasourceBody.encryptExtracts = updateFields.encryptExtracts;
+						}
+						if (updateFields.projectId) {
+							datasourceBody.project = { id: updateFields.projectId };
+						}
+						if (updateFields.ownerId) {
+							datasourceBody.owner = { id: updateFields.ownerId };
+						}
+
+						const response = await tableauApiRequest(
+							this,
+							'PUT',
+							`/datasources/${datasourceId}`,
+							credentials,
+							{},
+							{ datasource: datasourceBody },
+						);
+						const datasource = (response.datasource ?? response) as IDataObject;
+						returnData.push({ json: datasource, pairedItem: { item: i } });
+					}
+
+				} else if (resource === 'group') {
+					if (operation === 'addUser') {
+						const groupId = this.getNodeParameter('groupId', i) as string;
+						const userId = this.getNodeParameter('userId', i) as string;
+						const response = await tableauApiRequest(
+							this, 'POST', `/groups/${groupId}/users`, credentials, {}, { user: { id: userId } },
+						);
+						const user = (response.user ?? response) as IDataObject;
+						returnData.push({ json: user, pairedItem: { item: i } });
+
+					} else if (operation === 'create') {
+						const name = this.getNodeParameter('name', i) as string;
+						const options = this.getNodeParameter('options', i) as IDataObject;
+						const groupBody: IDataObject = { name };
+						if (options.minimumSiteRole) {
+							groupBody.minimumSiteRole = options.minimumSiteRole;
+						}
+						const response = await tableauApiRequest(
+							this, 'POST', '/groups', credentials, {}, { group: groupBody },
+						);
+						const group = (response.group ?? response) as IDataObject;
+						returnData.push({ json: group, pairedItem: { item: i } });
+
+					} else if (operation === 'getUsersInGroup') {
+						const groupId = this.getNodeParameter('groupId', i) as string;
+						const returnAll = this.getNodeParameter('returnAll', i) as boolean;
+
+						let results: IDataObject[];
+						if (returnAll) {
+							results = await tableauApiRequestAllItems(
+								this, 'GET', `/groups/${groupId}/users`, credentials, 'users',
+							);
+						} else {
+							const limit = this.getNodeParameter('limit', i) as number;
+							results = await tableauApiRequestWithLimit(
+								this, 'GET', `/groups/${groupId}/users`, credentials, 'users', limit,
+							);
+						}
+
+						for (const item of results) {
+							returnData.push({ json: item, pairedItem: { item: i } });
+						}
+
+					} else if (operation === 'removeUser') {
+						const groupId = this.getNodeParameter('groupId', i) as string;
+						const userId = this.getNodeParameter('userId', i) as string;
+						await tableauApiRequest(
+							this, 'DELETE', `/groups/${groupId}/users/${userId}`, credentials,
+						);
+						returnData.push({ json: { success: true, groupId, userId }, pairedItem: { item: i } });
+
+					} else if (operation === 'update') {
+						const groupId = this.getNodeParameter('groupId', i) as string;
+						const updateFields = this.getNodeParameter('updateFields', i) as IDataObject;
+						const groupBody: IDataObject = {};
+						if (updateFields.name !== undefined && updateFields.name !== '') {
+							groupBody.name = updateFields.name;
+						}
+						if (updateFields.minimumSiteRole) {
+							groupBody.minimumSiteRole = updateFields.minimumSiteRole;
+						}
+						const response = await tableauApiRequest(
+							this, 'PUT', `/groups/${groupId}`, credentials, {}, { group: groupBody },
+						);
+						const group = (response.group ?? response) as IDataObject;
+						returnData.push({ json: group, pairedItem: { item: i } });
+					}
+
 				} else if (resource === 'user') {
-					if (operation === 'get') {
+					if (operation === 'add') {
+						const name = this.getNodeParameter('name', i) as string;
+						const siteRole = this.getNodeParameter('siteRole', i) as string;
+						const options = this.getNodeParameter('options', i) as IDataObject;
+						const userBody: IDataObject = { name, siteRole };
+						if (options.authSetting) {
+							userBody.authSetting = options.authSetting;
+						}
+						const response = await tableauApiRequest(
+							this, 'POST', '/users', credentials, {}, { user: userBody },
+						);
+						const user = (response.user ?? response) as IDataObject;
+						returnData.push({ json: user, pairedItem: { item: i } });
+
+					} else if (operation === 'get') {
 						const userId = this.getNodeParameter('userId', i) as string;
 						const response = await tableauApiRequest(
 							this, 'GET', `/users/${userId}`, credentials,
@@ -466,6 +701,29 @@ export class TableauRestApi implements INodeType {
 						for (const item of results) {
 							returnData.push({ json: item, pairedItem: { item: i } });
 						}
+
+					} else if (operation === 'remove') {
+						const userId = this.getNodeParameter('userId', i) as string;
+						await tableauApiRequest(this, 'DELETE', `/users/${userId}`, credentials);
+						returnData.push({ json: { success: true, userId }, pairedItem: { item: i } });
+
+					} else if (operation === 'update') {
+						const userId = this.getNodeParameter('userId', i) as string;
+						const updateFields = this.getNodeParameter('updateFields', i) as IDataObject;
+						const userBody: IDataObject = {};
+						if (updateFields.siteRole) userBody.siteRole = updateFields.siteRole;
+						if (updateFields.fullName !== undefined && updateFields.fullName !== '') {
+							userBody.fullName = updateFields.fullName;
+						}
+						if (updateFields.email !== undefined && updateFields.email !== '') {
+							userBody.email = updateFields.email;
+						}
+						if (updateFields.authSetting) userBody.authSetting = updateFields.authSetting;
+						const response = await tableauApiRequest(
+							this, 'PUT', `/users/${userId}`, credentials, {}, { user: userBody },
+						);
+						const user = (response.user ?? response) as IDataObject;
+						returnData.push({ json: user, pairedItem: { item: i } });
 					}
 				}
 
@@ -527,6 +785,19 @@ function buildWorkbookFilterQs(
 }
 
 function buildViewFilterQs(
+	filters: IDataObject,
+	sort: IDataObject,
+): IDataObject {
+	const filterParts: string[] = [];
+	if (filters.name) filterParts.push(`name:eq:${filters.name as string}`);
+	if (filters.ownerName) filterParts.push(`ownerName:eq:${filters.ownerName as string}`);
+	if (filters.projectName) filterParts.push(`projectName:eq:${filters.projectName as string}`);
+	if (filters.tags) filterParts.push(`tags:has:${filters.tags as string}`);
+	if (filters.updatedAfter) filterParts.push(`updatedAt:gte:${filters.updatedAfter as string}`);
+	return buildFilterAndSort(filterParts, sort);
+}
+
+function buildDatasourceFilterQs(
 	filters: IDataObject,
 	sort: IDataObject,
 ): IDataObject {
