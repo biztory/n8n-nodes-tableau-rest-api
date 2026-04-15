@@ -15,4 +15,17 @@ export const workbookRefreshDescription: INodeProperties[] = [
 		},
 		description: 'The ID of the workbook whose extract to refresh',
 	},
+	{
+		displayName: 'Incremental Refresh',
+		name: 'incremental',
+		type: 'boolean',
+		default: false,
+		displayOptions: {
+			show: {
+				operation: ['refresh'],
+				resource: ['workbook'],
+			},
+		},
+		description: 'Whether to run an incremental refresh instead of a full refresh. Only supported on workbooks with an extract configured for incremental refresh.',
+	},
 ];

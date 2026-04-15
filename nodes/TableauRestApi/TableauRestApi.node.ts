@@ -288,8 +288,10 @@ export class TableauRestApi implements INodeType {
 
 					} else if (operation === 'refresh') {
 						const workbookId = this.getNodeParameter('workbookId', i) as string;
+						const incremental = this.getNodeParameter('incremental', i) as boolean;
+						const body: IDataObject = { extractRefresh: incremental ? { incremental: true } : {} };
 						const response = await tableauApiRequest(
-							this, 'POST', `/workbooks/${workbookId}/refresh`, credentials,
+							this, 'POST', `/workbooks/${workbookId}/refresh`, credentials, {}, body,
 						);
 						const job = (response.job ?? response) as IDataObject;
 						returnData.push({ json: job, pairedItem: { item: i } });
@@ -561,8 +563,10 @@ export class TableauRestApi implements INodeType {
 
 					} else if (operation === 'refresh') {
 						const datasourceId = this.getNodeParameter('datasourceId', i) as string;
+						const incremental = this.getNodeParameter('incremental', i) as boolean;
+						const body: IDataObject = { extractRefresh: incremental ? { incremental: true } : {} };
 						const response = await tableauApiRequest(
-							this, 'POST', `/datasources/${datasourceId}/refresh`, credentials,
+							this, 'POST', `/datasources/${datasourceId}/refresh`, credentials, {}, body,
 						);
 						const job = (response.job ?? response) as IDataObject;
 						returnData.push({ json: job, pairedItem: { item: i } });
