@@ -4,7 +4,9 @@ import {
 	NodeOperationError,
 	type IDataObject,
 	type IExecuteFunctions,
+	type ILoadOptionsFunctions,
 	type INodeExecutionData,
+	type INodePropertyOptions,
 	type INodeType,
 	type INodeTypeDescription,
 	type JsonObject,
@@ -16,6 +18,7 @@ import { projectOperations, projectFields } from './resources/project';
 import { workbookOperations, workbookFields } from './resources/workbook';
 import { viewOperations, viewFields } from './resources/view';
 import { userOperations, userFields } from './resources/user';
+import { vizqlDataServiceOperations, vizqlDataServiceFields } from './resources/vizqlDataService';
 import {
 	getAuthToken,
 	tableauSignOut,
@@ -26,6 +29,8 @@ import {
 	tableauApiRequestAllItems,
 	tableauApiRequestWithLimit,
 	extractItems,
+	vizqlDataServiceRequest,
+	authenticateOnce,
 } from './shared/transport';
 import { buildVfFilters, parseCsvToJson } from './resources/view/download';
 import type { TableauCredentials } from './shared/types';
@@ -64,6 +69,7 @@ export class TableauRestApi implements INodeType {
 					{ name: 'Project', value: 'project' },
 					{ name: 'User', value: 'user' },
 					{ name: 'View', value: 'view' },
+					{ name: 'VizQL Data Service', value: 'vizqlDataService' },
 					{ name: 'Workbook', value: 'workbook' },
 				],
 				default: 'workbook',
@@ -79,9 +85,44 @@ export class TableauRestApi implements INodeType {
 			...userFields,
 			...viewOperations,
 			...viewFields,
+			...vizqlDataServiceOperations,
+			...vizqlDataServiceFields,
 			...workbookOperations,
 			...workbookFields,
 		],
+	};
+
+	methods = {
+		loadOptions: {
+			async getVizqlFields(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				const datasourceLuid = this.getNodeParameter('datasourceLuid') as string;
+				if (!datasourceLuid) return [];
+
+				const credentials = (await this.getCredentials(
+					'tableauRestApiApi',
+				)) as unknown as TableauCredentials;
+
+				const authToken = await authenticateOnce(this, credentials);
+
+				const url = `${credentials.serverUrl.replace(/\/+$/, '')}/api/v1/vizql-data-service/read-metadata`;
+				// eslint-disable-next-line @n8n/community-nodes/no-http-request-with-manual-auth
+				const response = (await this.helpers.httpRequest({
+					method: 'POST',
+					url,
+					headers: {
+						'Content-Type': 'application/json',
+						'X-Tableau-Auth': authToken.token,
+					},
+					body: { datasource: { datasourceLuid }, options: {} },
+					json: true,
+				})) as Array<{ fieldCaption: string; dataType: string; fieldRole: string }>;
+
+				return response.map((f) => ({
+					name: `${f.fieldCaption} [${f.fieldRole} · ${f.dataType}]`,
+					value: f.fieldCaption,
+				}));
+			},
+		},
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
@@ -829,6 +870,111 @@ export class TableauRestApi implements INodeType {
 						const user = (response.user ?? response) as IDataObject;
 						returnData.push({ json: user, pairedItem: { item: i } });
 					}
+
+				} else if (resource === 'vizqlDataService') {
+
+					if (operation === 'readMetadata') {
+						const datasourceLuid = this.getNodeParameter('datasourceLuid', i) as string;
+						const options = this.getNodeParameter('options', i) as IDataObject;
+						const connections = this.getNodeParameter('connections', i) as IDataObject;
+
+						const body: IDataObject = {
+							datasource: {
+								datasourceLuid,
+								...buildVizqlConnections(connections),
+							},
+							options: buildVizqlOptions(options),
+						};
+
+						const fields = (await vizqlDataServiceRequest(
+							this, 'read-metadata', credentials, body,
+						)) as IDataObject[];
+
+						for (const field of fields) {
+							returnData.push({ json: field, pairedItem: { item: i } });
+						}
+
+					} else if (operation === 'queryDatasource') {
+						const datasourceLuid = this.getNodeParameter('datasourceLuid', i) as string;
+						const queryRaw = this.getNodeParameter('query', i) as IDataObject | string;
+						const options = this.getNodeParameter('options', i) as IDataObject;
+						const connections = this.getNodeParameter('connections', i) as IDataObject;
+
+						const query = typeof queryRaw === 'string' ? JSON.parse(queryRaw) as IDataObject : queryRaw;
+
+						const queryOptions: IDataObject = buildVizqlOptions(options);
+						if (options.rowLimit) queryOptions.rowLimit = options.rowLimit;
+						if (options.returnFormat && options.returnFormat !== 'OBJECTS') {
+							queryOptions.returnFormat = options.returnFormat;
+						}
+						if (options.disaggregate) queryOptions.disaggregate = true;
+
+						const body: IDataObject = {
+							datasource: {
+								datasourceLuid,
+								...buildVizqlConnections(connections),
+							},
+							query,
+							options: queryOptions,
+						};
+
+						const rows = (await vizqlDataServiceRequest(
+							this, 'query-datasource', credentials, body,
+						)) as IDataObject[];
+
+						for (const row of rows) {
+							returnData.push({ json: row, pairedItem: { item: i } });
+						}
+
+					} else if (operation === 'getDatasourceModel') {
+						const datasourceLuid = this.getNodeParameter('datasourceLuid', i) as string;
+						const options = this.getNodeParameter('options', i) as IDataObject;
+						const connections = this.getNodeParameter('connections', i) as IDataObject;
+
+						const body: IDataObject = {
+							datasource: {
+								datasourceLuid,
+								...buildVizqlConnections(connections),
+							},
+							options: buildVizqlOptions(options),
+						};
+
+						const model = (await vizqlDataServiceRequest(
+							this, 'get-datasource-model', credentials, body,
+						)) as IDataObject;
+
+						returnData.push({ json: model, pairedItem: { item: i } });
+
+					} else if (operation === 'buildQuery') {
+						const fieldsRaw = (this.getNodeParameter('fields', i) as IDataObject).field as IDataObject[] | undefined ?? [];
+						const filtersRaw = (this.getNodeParameter('filters', i) as IDataObject).filter as IDataObject[] | undefined ?? [];
+						const parametersRaw = (this.getNodeParameter('parameters', i) as IDataObject).parameter as IDataObject[] | undefined ?? [];
+
+						const fields = fieldsRaw
+							.filter((f) => f.fieldCaption)
+							.map((f) => {
+								const field: IDataObject = { fieldCaption: f.fieldCaption };
+								if (f.function) field.function = f.function;
+								if (f.fieldAlias) field.fieldAlias = f.fieldAlias;
+								if (f.sortDirection) field.sortDirection = f.sortDirection;
+								if (f.sortPriority) field.sortPriority = f.sortPriority;
+								return field;
+							});
+
+						const filters = filtersRaw
+							.filter((f) => f.fieldCaption && f.filterType)
+							.map((f) => buildVizqlFilterSpec(f));
+
+						const parameters = parametersRaw
+							.filter((p) => p.parameterName)
+							.map((p) => ({ parameterName: p.parameterName, value: p.value }));
+
+						const query: IDataObject = { fields };
+						if (filters.length > 0) query.filters = filters;
+						if (parameters.length > 0) query.parameters = parameters;
+
+						returnData.push({ json: { query }, pairedItem: { item: i } });
+					}
 				}
 
 			} catch (error) {
@@ -990,6 +1136,71 @@ function simplifyProject(item: IDataObject): IDataObject {
 function simplifyGroup(item: IDataObject): IDataObject {
 	const { id, name } = item;
 	return { id, name };
+}
+
+// ---------------------------------------------------------------------------
+// VizQL Data Service helpers
+// ---------------------------------------------------------------------------
+
+function buildVizqlConnections(connections: IDataObject): IDataObject {
+	const items = (connections.connection as IDataObject[] | undefined) ?? [];
+	if (items.length === 0) return {};
+	return {
+		connections: items
+			.filter((c) => c.connectionLuid || c.connectionUsername)
+			.map((c) => {
+				const conn: IDataObject = {};
+				if (c.connectionLuid) conn.connectionLuid = c.connectionLuid;
+				if (c.connectionUsername) conn.connectionUsername = c.connectionUsername;
+				if (c.connectionPassword) conn.connectionPassword = c.connectionPassword;
+				return conn;
+			}),
+	};
+}
+
+function buildVizqlOptions(options: IDataObject): IDataObject {
+	const result: IDataObject = {};
+	if (options.bypassMetadataCache) result.bypassMetadataCache = true;
+	if (options.includeHiddenFields) result.includeHiddenFields = true;
+	if (options.includeGroupFormulas) result.includeGroupFormulas = true;
+	if (options.interpretFieldCaptionsAsFieldNames) result.interpretFieldCaptionsAsFieldNames = true;
+	return result;
+}
+
+function buildVizqlFilterSpec(f: IDataObject): IDataObject {
+	const base: IDataObject = {
+		fieldCaption: f.fieldCaption,
+		filterType: f.filterType,
+	};
+
+	switch (f.filterType) {
+		case 'SET': {
+			try {
+				base.values = JSON.parse(f.values as string) as unknown[];
+			} catch {
+				base.values = [f.values];
+			}
+			break;
+		}
+		case 'QUANTITATIVE_NUMERICAL':
+		case 'QUANTITATIVE_DATE': {
+			if (f.min) base.min = f.min;
+			if (f.max) base.max = f.max;
+			break;
+		}
+		case 'TOP': {
+			base.n = f.n;
+			base.operation = f.filterOperation;
+			break;
+		}
+		case 'MATCH': {
+			base.matchType = f.matchType;
+			base.values = [f.matchValue];
+			break;
+		}
+	}
+
+	return base;
 }
 
 function simplifyUser(item: IDataObject): IDataObject {

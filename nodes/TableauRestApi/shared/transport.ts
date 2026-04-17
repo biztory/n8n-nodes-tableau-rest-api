@@ -7,6 +7,13 @@ import type {
 } from 'n8n-workflow';
 import type { TableauAuthToken, TableauCredentials } from './types';
 
+/** Minimal context needed to make an HTTP request — satisfied by both IExecuteFunctions and ILoadOptionsFunctions. */
+export type HttpContext = {
+	helpers: {
+		httpRequest(requestOptions: IHttpRequestOptions): Promise<unknown>;
+	};
+};
+
 const TABLEAU_AUTH_CACHE_KEY = 'tableauRestApiAuth';
 
 /** How many minutes before actual expiry we consider the token stale */
@@ -50,7 +57,7 @@ export function signJwt(credentials: TableauCredentials): string {
 }
 
 async function authenticate(
-	context: IExecuteFunctions,
+	context: HttpContext,
 	credentials: TableauCredentials,
 ): Promise<TableauAuthToken> {
 	const { serverUrl, siteContentUrl, apiVersion } = credentials;
@@ -489,6 +496,50 @@ export async function tableauApiRequestAllItems(
 	}
 
 	return allItems;
+}
+
+// ---------------------------------------------------------------------------
+// VizQL Data Service helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Authenticate without caching — for use in loadOptions methods where
+ * workflow static data is not available.
+ */
+export async function authenticateOnce(
+	context: HttpContext,
+	credentials: TableauCredentials,
+): Promise<TableauAuthToken> {
+	return authenticate(context, credentials);
+}
+
+function vizqlUrl(credentials: TableauCredentials, endpoint: string): string {
+	return `${credentials.serverUrl.replace(/\/+$/, '')}/api/v1/vizql-data-service/${endpoint}`;
+}
+
+/**
+ * Make an authenticated POST request to the VizQL Data Service.
+ * Unlike the Tableau REST API, VizQL uses a fixed /api/v1/ path with no site ID.
+ */
+export async function vizqlDataServiceRequest(
+	context: IExecuteFunctions,
+	endpoint: string,
+	credentials: TableauCredentials,
+	body: IDataObject = {},
+): Promise<IDataObject | IDataObject[]> {
+	return withAuthRetry(context, credentials, async (authToken) => {
+		return (await context.helpers.httpRequest({
+			method: 'POST',
+			url: vizqlUrl(credentials, endpoint),
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': 'application/json',
+				'X-Tableau-Auth': authToken.token,
+			},
+			body,
+			json: true,
+		})) as IDataObject | IDataObject[];
+	});
 }
 
 /**
