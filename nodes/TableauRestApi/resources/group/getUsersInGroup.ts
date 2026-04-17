@@ -43,4 +43,23 @@ export const groupGetUsersInGroupDescription: INodeProperties[] = [
 		default: 50,
 		description: 'Max number of results to return',
 	},
+	{
+		displayName: 'Options',
+		name: 'options',
+		type: 'collection',
+		placeholder: 'Add Option',
+		displayOptions: {
+			show: showOnlyForGroupGetUsers,
+		},
+		default: {},
+		options: [
+			{
+				displayName: 'Simplify',
+				name: 'simplify',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to return a simplified version of the response instead of the full data',
+			},
+		],
+	},
 ];

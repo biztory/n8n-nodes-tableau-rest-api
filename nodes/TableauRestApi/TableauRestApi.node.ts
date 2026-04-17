@@ -169,6 +169,7 @@ export class TableauRestApi implements INodeType {
 						const returnAll = this.getNodeParameter('returnAll', i) as boolean;
 						const filters = this.getNodeParameter('filters', i) as IDataObject;
 						const sort = this.getNodeParameter('sort', i) as IDataObject;
+						const options = this.getNodeParameter('options', i) as IDataObject;
 						const qs = buildWorkbookFilterQs(filters, sort);
 
 						let results: IDataObject[];
@@ -184,7 +185,7 @@ export class TableauRestApi implements INodeType {
 						}
 
 						for (const item of results) {
-							returnData.push({ json: item, pairedItem: { item: i } });
+							returnData.push({ json: options.simplify ? simplifyWorkbook(item) : item, pairedItem: { item: i } });
 						}
 
 					} else if (operation === 'getViews') {
@@ -200,7 +201,7 @@ export class TableauRestApi implements INodeType {
 						);
 						const views = extractItems(response, 'views');
 						for (const view of views) {
-							returnData.push({ json: view, pairedItem: { item: i } });
+							returnData.push({ json: options.simplify ? simplifyView(view) : view, pairedItem: { item: i } });
 						}
 
 					} else if (operation === 'publish') {
@@ -373,7 +374,7 @@ export class TableauRestApi implements INodeType {
 						}
 
 						for (const item of results) {
-							returnData.push({ json: item, pairedItem: { item: i } });
+							returnData.push({ json: options.simplify ? simplifyView(item) : item, pairedItem: { item: i } });
 						}
 
 					} else if (operation === 'getPdf') {
@@ -455,6 +456,7 @@ export class TableauRestApi implements INodeType {
 						const returnAll = this.getNodeParameter('returnAll', i) as boolean;
 						const filters = this.getNodeParameter('filters', i) as IDataObject;
 						const sort = this.getNodeParameter('sort', i) as IDataObject;
+						const options = this.getNodeParameter('options', i) as IDataObject;
 						const qs = buildDatasourceFilterQs(filters, sort);
 
 						let results: IDataObject[];
@@ -470,7 +472,7 @@ export class TableauRestApi implements INodeType {
 						}
 
 						for (const item of results) {
-							returnData.push({ json: item, pairedItem: { item: i } });
+							returnData.push({ json: options.simplify ? simplifyDatasource(item) : item, pairedItem: { item: i } });
 						}
 
 					} else if (operation === 'getConnections') {
@@ -577,6 +579,7 @@ export class TableauRestApi implements INodeType {
 						const returnAll = this.getNodeParameter('returnAll', i) as boolean;
 						const filters = this.getNodeParameter('filters', i) as IDataObject;
 						const sort = this.getNodeParameter('sort', i) as IDataObject;
+						const options = this.getNodeParameter('options', i) as IDataObject;
 						const qs = buildGroupFilterQs(filters, sort);
 
 						let results: IDataObject[];
@@ -592,7 +595,7 @@ export class TableauRestApi implements INodeType {
 						}
 
 						for (const item of results) {
-							returnData.push({ json: item, pairedItem: { item: i } });
+							returnData.push({ json: options.simplify ? simplifyGroup(item) : item, pairedItem: { item: i } });
 						}
 
 					} else if (operation === 'addUser') {
@@ -620,6 +623,7 @@ export class TableauRestApi implements INodeType {
 					} else if (operation === 'getUsersInGroup') {
 						const groupId = this.getNodeParameter('groupId', i) as string;
 						const returnAll = this.getNodeParameter('returnAll', i) as boolean;
+						const options = this.getNodeParameter('options', i) as IDataObject;
 
 						let results: IDataObject[];
 						if (returnAll) {
@@ -634,7 +638,7 @@ export class TableauRestApi implements INodeType {
 						}
 
 						for (const item of results) {
-							returnData.push({ json: item, pairedItem: { item: i } });
+							returnData.push({ json: options.simplify ? simplifyUser(item) : item, pairedItem: { item: i } });
 						}
 
 					} else if (operation === 'removeUser') {
@@ -691,6 +695,7 @@ export class TableauRestApi implements INodeType {
 						const returnAll = this.getNodeParameter('returnAll', i) as boolean;
 						const filters = this.getNodeParameter('filters', i) as IDataObject;
 						const sort = this.getNodeParameter('sort', i) as IDataObject;
+						const options = this.getNodeParameter('options', i) as IDataObject;
 						const qs = buildProjectFilterQs(filters, sort);
 
 						let results: IDataObject[];
@@ -706,7 +711,7 @@ export class TableauRestApi implements INodeType {
 						}
 
 						for (const item of results) {
-							returnData.push({ json: item, pairedItem: { item: i } });
+							returnData.push({ json: options.simplify ? simplifyProject(item) : item, pairedItem: { item: i } });
 						}
 
 					} else if (operation === 'update') {
@@ -763,6 +768,7 @@ export class TableauRestApi implements INodeType {
 						const returnAll = this.getNodeParameter('returnAll', i) as boolean;
 						const filters = this.getNodeParameter('filters', i) as IDataObject;
 						const sort = this.getNodeParameter('sort', i) as IDataObject;
+						const options = this.getNodeParameter('options', i) as IDataObject;
 						const qs = buildUserFilterQs(filters, sort);
 
 						let results: IDataObject[];
@@ -778,7 +784,7 @@ export class TableauRestApi implements INodeType {
 						}
 
 						for (const item of results) {
-							returnData.push({ json: item, pairedItem: { item: i } });
+							returnData.push({ json: options.simplify ? simplifyUser(item) : item, pairedItem: { item: i } });
 						}
 
 					} else if (operation === 'remove') {
@@ -918,6 +924,64 @@ function buildUserFilterQs(
 	if (filters.siteRole) filterParts.push(`siteRole:eq:${filters.siteRole as string}`);
 	if (filters.lastLoginAfter) filterParts.push(`lastLogin:gte:${filters.lastLoginAfter as string}`);
 	return buildFilterAndSort(filterParts, sort);
+}
+
+function simplifyWorkbook(item: IDataObject): IDataObject {
+	const { id, name, contentUrl, project, location } = item;
+	return {
+		id,
+		name,
+		contentUrl,
+		...(project ? { project } : {}),
+		...(location ? { location } : {}),
+	};
+}
+
+function simplifyView(item: IDataObject): IDataObject {
+	const { id, name, contentUrl, location } = item;
+	return {
+		id,
+		name,
+		contentUrl,
+		...(location ? { location } : {}),
+	};
+}
+
+function simplifyDatasource(item: IDataObject): IDataObject {
+	const { id, name, contentUrl, type, project, location } = item;
+	return {
+		id,
+		name,
+		contentUrl,
+		...(type ? { type } : {}),
+		...(project ? { project } : {}),
+		...(location ? { location } : {}),
+	};
+}
+
+function simplifyProject(item: IDataObject): IDataObject {
+	const { id, name, parentProjectId } = item;
+	return {
+		id,
+		name,
+		...(parentProjectId ? { parentProjectId } : {}),
+	};
+}
+
+function simplifyGroup(item: IDataObject): IDataObject {
+	const { id, name } = item;
+	return { id, name };
+}
+
+function simplifyUser(item: IDataObject): IDataObject {
+	const { id, name, fullName, email, siteRole } = item;
+	return {
+		id,
+		name,
+		...(fullName ? { fullName } : {}),
+		...(email ? { email } : {}),
+		...(siteRole ? { siteRole } : {}),
+	};
 }
 
 /** Escape a string for use in an XML attribute value (double-quoted). */

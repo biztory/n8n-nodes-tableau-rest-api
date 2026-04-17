@@ -50,6 +50,13 @@ export const viewGetManyDescription: INodeProperties[] = [
 				description:
 					'Whether to include view usage statistics (total view count, last accessed) in the response',
 			},
+			{
+				displayName: 'Simplify',
+				name: 'simplify',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to return a simplified version of the response instead of the full data',
+			},
 		],
 	},
 	{

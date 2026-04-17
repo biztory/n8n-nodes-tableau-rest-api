@@ -33,6 +33,25 @@ export const workbookGetManyDescription: INodeProperties[] = [
 		description: 'Max number of results to return',
 	},
 	{
+		displayName: 'Options',
+		name: 'options',
+		type: 'collection',
+		placeholder: 'Add Option',
+		displayOptions: {
+			show: showOnlyForWorkbookGetMany,
+		},
+		default: {},
+		options: [
+			{
+				displayName: 'Simplify',
+				name: 'simplify',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to return a simplified version of the response instead of the full data',
+			},
+		],
+	},
+	{
 		displayName: 'Filters',
 		name: 'filters',
 		type: 'collection',
