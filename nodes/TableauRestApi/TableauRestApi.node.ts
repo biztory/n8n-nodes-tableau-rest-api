@@ -27,7 +27,7 @@ import {
 	tableauApiRequestWithLimit,
 	extractItems,
 } from './shared/transport';
-import { buildVfFilters } from './resources/view/download';
+import { buildVfFilters, parseCsvToJson } from './resources/view/download';
 import type { TableauCredentials } from './shared/types';
 
 export class TableauRestApi implements INodeType {
@@ -322,14 +322,20 @@ export class TableauRestApi implements INodeType {
 						const csvBuffer = await tableauApiBinaryRequest(
 							this, `/views/${viewId}/data`, credentials, qs,
 						);
-						const csvBinary = await this.helpers.prepareBinaryData(
-							csvBuffer, `view-${viewId}.csv`, 'text/csv',
-						);
-						returnData.push({
-							json: { viewId, mimeType: 'text/csv', fileName: `view-${viewId}.csv` },
-							binary: { data: csvBinary },
-							pairedItem: { item: i },
-						});
+
+						if (options.outputFormat === 'json') {
+							const rows = parseCsvToJson(csvBuffer);
+							returnData.push({ json: { viewId, rows }, pairedItem: { item: i } });
+						} else {
+							const csvBinary = await this.helpers.prepareBinaryData(
+								csvBuffer, `view-${viewId}.csv`, 'text/csv',
+							);
+							returnData.push({
+								json: { viewId, mimeType: 'text/csv', fileName: `view-${viewId}.csv` },
+								binary: { data: csvBinary },
+								pairedItem: { item: i },
+							});
+						}
 
 					} else if (operation === 'getImage') {
 						const viewId = this.getNodeParameter('viewId', i) as string;
@@ -342,14 +348,27 @@ export class TableauRestApi implements INodeType {
 						const imageBuffer = await tableauApiBinaryRequest(
 							this, `/views/${viewId}/image`, credentials, qs,
 						);
-						const imageBinary = await this.helpers.prepareBinaryData(
-							imageBuffer, `view-${viewId}.png`, 'image/png',
-						);
-						returnData.push({
-							json: { viewId, mimeType: 'image/png', fileName: `view-${viewId}.png` },
-							binary: { data: imageBinary },
-							pairedItem: { item: i },
-						});
+
+						if (options.outputFormat === 'base64') {
+							returnData.push({
+								json: {
+									viewId,
+									mimeType: 'image/png',
+									fileName: `view-${viewId}.png`,
+									data: imageBuffer.toString('base64'),
+								},
+								pairedItem: { item: i },
+							});
+						} else {
+							const imageBinary = await this.helpers.prepareBinaryData(
+								imageBuffer, `view-${viewId}.png`, 'image/png',
+							);
+							returnData.push({
+								json: { viewId, mimeType: 'image/png', fileName: `view-${viewId}.png` },
+								binary: { data: imageBinary },
+								pairedItem: { item: i },
+							});
+						}
 
 					} else if (operation === 'getAll') {
 						const returnAll = this.getNodeParameter('returnAll', i) as boolean;
