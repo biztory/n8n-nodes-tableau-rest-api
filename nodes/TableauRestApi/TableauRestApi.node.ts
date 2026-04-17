@@ -115,9 +115,9 @@ export class TableauRestApi implements INodeType {
 					},
 					body: { datasource: { datasourceLuid }, options: {} },
 					json: true,
-				})) as Array<{ fieldCaption: string; dataType: string; fieldRole: string }>;
+				})) as { data: Array<{ fieldCaption: string; dataType: string; fieldRole: string }> };
 
-				return response.map((f) => ({
+				return (response.data ?? []).map((f) => ({
 					name: `${f.fieldCaption} [${f.fieldRole} · ${f.dataType}]`,
 					value: f.fieldCaption,
 				}));
@@ -886,11 +886,11 @@ export class TableauRestApi implements INodeType {
 							options: buildVizqlOptions(options),
 						};
 
-						const fields = (await vizqlDataServiceRequest(
+						const response = (await vizqlDataServiceRequest(
 							this, 'read-metadata', credentials, body,
-						)) as IDataObject[];
+						)) as { data: IDataObject[] };
 
-						for (const field of fields) {
+						for (const field of response.data ?? []) {
 							returnData.push({ json: field, pairedItem: { item: i } });
 						}
 
