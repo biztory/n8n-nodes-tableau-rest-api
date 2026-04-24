@@ -3,7 +3,7 @@
     "version": "0.1.14",
     "description": "n8n community node for the Tableau REST API",
     "license": "MIT",
-    "homepage": "",
+    "homepage": "https://www.biztory.com",
     "keywords": [
         "n8n-community-node-package",
         "tableau",
