@@ -2,6 +2,7 @@ import {
 	NodeConnectionTypes,
 	NodeApiError,
 	NodeOperationError,
+	type IAllExecuteFunctions,
 	type IDataObject,
 	type IExecuteFunctions,
 	type ILoadOptionsFunctions,
@@ -30,7 +31,6 @@ import {
 	tableauApiRequestWithLimit,
 	extractItems,
 	vizqlDataServiceRequest,
-	authenticateOnce,
 } from './shared/transport';
 import { buildVfFilters, parseCsvToJson } from './resources/view/download';
 import type { TableauCredentials } from './shared/types';
@@ -98,24 +98,24 @@ export class TableauRestApi implements INodeType {
 				const datasourceLuid = this.getNodeParameter('datasourceLuid') as string;
 				if (!datasourceLuid) return [];
 
-				const credentials = (await this.getCredentials(
+				const credentials = await this.getCredentials('tableauRestApiApi');
+				const serverUrl = (credentials.serverUrl as string).replace(/\/+$/, '');
+
+				// TypeScript's this-parameter constraint on httpRequestWithAuthentication is checked
+			// against the receiver (this.helpers), not the outer this. Using .call() with an
+			// explicit IAllExecuteFunctions context satisfies the constraint at the type level;
+			// at runtime n8n's helpers are already bound to the correct execution context.
+			const response = (await this.helpers.httpRequestWithAuthentication.call(
+					this as IAllExecuteFunctions,
 					'tableauRestApiApi',
-				)) as unknown as TableauCredentials;
-
-				const authToken = await authenticateOnce(this, credentials);
-
-				const url = `${credentials.serverUrl.replace(/\/+$/, '')}/api/v1/vizql-data-service/read-metadata`;
-				// eslint-disable-next-line @n8n/community-nodes/no-http-request-with-manual-auth
-				const response = (await this.helpers.httpRequest({
-					method: 'POST',
-					url,
-					headers: {
-						'Content-Type': 'application/json',
-						'X-Tableau-Auth': authToken.token,
+					{
+						method: 'POST',
+						url: `${serverUrl}/api/v1/vizql-data-service/read-metadata`,
+						headers: { 'Content-Type': 'application/json' },
+						body: { datasource: { datasourceLuid }, options: {} },
+						json: true,
 					},
-					body: { datasource: { datasourceLuid }, options: {} },
-					json: true,
-				})) as { data: Array<{ fieldCaption: string; dataType: string; fieldRole: string }> };
+				)) as { data: Array<{ fieldCaption: string; dataType: string; fieldRole: string }> };
 
 				return (response.data ?? []).map((f) => ({
 					name: `${f.fieldCaption} [${f.fieldRole} · ${f.dataType}]`,

@@ -1,4 +1,49 @@
-import type { ICredentialTestRequest, ICredentialType, INodeProperties, Icon } from 'n8n-workflow';
+import { createHmac, randomUUID } from 'crypto';
+import type {
+	IAuthenticate,
+	ICredentialDataDecryptedObject,
+	ICredentialTestRequest,
+	ICredentialType,
+	IHttpRequestOptions,
+	INodeProperties,
+	Icon,
+} from 'n8n-workflow';
+
+function base64url(data: string): string {
+	return Buffer.from(data).toString('base64url');
+}
+
+function signJwt(credentials: {
+	clientId: string;
+	secretId: string;
+	secretValue: string;
+	username: string;
+	scopes: string;
+}): string {
+	const scopeList = credentials.scopes
+		.split(',')
+		.map((s) => s.trim())
+		.filter(Boolean);
+
+	const header = base64url(
+		JSON.stringify({ alg: 'HS256', kid: credentials.secretId, iss: credentials.clientId }),
+	);
+	const payload = base64url(
+		JSON.stringify({
+			iss: credentials.clientId,
+			sub: credentials.username,
+			aud: 'tableau',
+			exp: Math.floor(Date.now() / 1000) + 600,
+			jti: randomUUID(),
+			scp: scopeList,
+		}),
+	);
+	const signature = createHmac('sha256', credentials.secretValue)
+		.update(`${header}.${payload}`)
+		.digest('base64url');
+
+	return `${header}.${payload}.${signature}`;
+}
 
 export class TableauRestApiApi implements ICredentialType {
 	name = 'tableauRestApiApi';
@@ -9,6 +54,50 @@ export class TableauRestApiApi implements ICredentialType {
 
 	documentationUrl =
 		'https://help.tableau.com/current/online/en-us/connected_apps_direct.htm';
+
+	authenticate: IAuthenticate = async (
+		credentials: ICredentialDataDecryptedObject,
+		requestOptions: IHttpRequestOptions,
+	): Promise<IHttpRequestOptions> => {
+		const baseUrl = (credentials.serverUrl as string).replace(/\/+$/, '');
+		const jwt = signJwt(credentials as {
+			clientId: string;
+			secretId: string;
+			secretValue: string;
+			username: string;
+			scopes: string;
+		});
+
+		const signInResponse = await fetch(
+			`${baseUrl}/api/${credentials.apiVersion as string}/auth/signin`,
+			{
+				method: 'POST',
+				headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					credentials: { jwt, site: { contentUrl: credentials.siteContentUrl } },
+				}),
+			},
+		);
+
+		if (!signInResponse.ok) {
+			const text = await signInResponse.text();
+			throw new Error(`Tableau authentication failed (${signInResponse.status}): ${text}`);
+		}
+
+		const data = (await signInResponse.json()) as { credentials?: { token?: string } };
+		const token = data.credentials?.token;
+		if (!token) {
+			throw new Error('Tableau authentication: no token returned from sign-in endpoint');
+		}
+
+		return {
+			...requestOptions,
+			headers: {
+				...requestOptions.headers,
+				'X-Tableau-Auth': token,
+			},
+		};
+	};
 
 	// Tests server connectivity and that the API version is valid.
 	// Full JWT auth is verified on first use — JWT errors surface with

@@ -7,12 +7,6 @@ import type {
 } from 'n8n-workflow';
 import type { TableauAuthToken, TableauCredentials } from './types';
 
-/** Minimal context needed to make an HTTP request — satisfied by both IExecuteFunctions and ILoadOptionsFunctions. */
-export type HttpContext = {
-	helpers: {
-		httpRequest(requestOptions: IHttpRequestOptions): Promise<unknown>;
-	};
-};
 
 const TABLEAU_AUTH_CACHE_KEY = 'tableauRestApiAuth';
 
@@ -57,7 +51,7 @@ export function signJwt(credentials: TableauCredentials): string {
 }
 
 async function authenticate(
-	context: HttpContext,
+	context: IExecuteFunctions,
 	credentials: TableauCredentials,
 ): Promise<TableauAuthToken> {
 	const { serverUrl, siteContentUrl, apiVersion } = credentials;
@@ -501,17 +495,6 @@ export async function tableauApiRequestAllItems(
 // ---------------------------------------------------------------------------
 // VizQL Data Service helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Authenticate without caching — for use in loadOptions methods where
- * workflow static data is not available.
- */
-export async function authenticateOnce(
-	context: HttpContext,
-	credentials: TableauCredentials,
-): Promise<TableauAuthToken> {
-	return authenticate(context, credentials);
-}
 
 function vizqlUrl(credentials: TableauCredentials, endpoint: string): string {
 	return `${credentials.serverUrl.replace(/\/+$/, '')}/api/v1/vizql-data-service/${endpoint}`;
