@@ -863,6 +863,9 @@ export class TableauRestApi implements INodeType {
 						if (updateFields.email !== undefined && updateFields.email !== '') {
 							userBody.email = updateFields.email;
 						}
+						if (updateFields.password !== undefined && updateFields.password !== '') {
+							userBody.password = updateFields.password;
+						}
 						if (updateFields.authSetting) userBody.authSetting = updateFields.authSetting;
 						const response = await tableauApiRequest(
 							this, 'PUT', `/users/${userId}`, credentials, {}, { user: userBody },

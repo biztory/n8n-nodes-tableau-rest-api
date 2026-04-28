@@ -58,6 +58,14 @@ export const userUpdateDescription: INodeProperties[] = [
 				description: "The user's display name",
 			},
 			{
+				displayName: 'Password',
+				name: 'password',
+				type: 'string',
+				typeOptions: { password: true },
+				default: '',
+				description: "The user's new password. Only applies to Tableau Server with local authentication.",
+			},
+			{
 				displayName: 'Site Role',
 				name: 'siteRole',
 				type: 'options',
