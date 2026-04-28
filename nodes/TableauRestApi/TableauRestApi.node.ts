@@ -921,11 +921,11 @@ export class TableauRestApi implements INodeType {
 							options: queryOptions,
 						};
 
-						const rows = (await vizqlDataServiceRequest(
+						const response = (await vizqlDataServiceRequest(
 							this, 'query-datasource', credentials, body,
-						)) as IDataObject[];
+						)) as { data: IDataObject[] };
 
-						for (const row of rows) {
+						for (const row of response.data ?? []) {
 							returnData.push({ json: row, pairedItem: { item: i } });
 						}
 
