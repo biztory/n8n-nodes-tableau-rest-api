@@ -59,6 +59,12 @@ export class TableauRestApiApi implements ICredentialType {
 		credentials: ICredentialDataDecryptedObject,
 		requestOptions: IHttpRequestOptions,
 	): Promise<IHttpRequestOptions> => {
+		// /serverinfo is a public endpoint that explicitly rejects scoped session
+		// tokens. Return the request unmodified so the credential test can reach it.
+		if (typeof requestOptions.url === 'string' && requestOptions.url.endsWith('/serverinfo')) {
+			return requestOptions;
+		}
+
 		const baseUrl = (credentials.serverUrl as string).replace(/\/+$/, '');
 		const jwt = signJwt(credentials as {
 			clientId: string;
