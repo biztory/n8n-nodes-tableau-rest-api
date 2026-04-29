@@ -97,7 +97,7 @@ The **Tableau** node supports the following resources and operations:
 
 Tested and supported starting with n8n version **2.13.3**.
 
-The node uses Tableau REST API version **3.24** by default, which is compatible with Tableau Cloud and Tableau Server 2024.2+. The API version is configurable in the credentials.
+The node uses Tableau REST API version **3.24** by default, which is compatible with Tableau Cloud and Tableau Server 2024.2+. The API version is configurable in the credentials. Refer to the Tableau REST API documentation to identify the correct versions and scope(s) to use for your usage.
 
 ## Usage
 
