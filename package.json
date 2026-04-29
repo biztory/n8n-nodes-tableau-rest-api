@@ -1,6 +1,6 @@
 {
     "name": "@biztory/n8n-nodes-tableau-rest-api",
-    "version": "0.1.15",
+    "version": "0.1.16",
     "description": "n8n community node for the Tableau REST API",
     "license": "MIT",
     "homepage": "https://www.biztory.com",
