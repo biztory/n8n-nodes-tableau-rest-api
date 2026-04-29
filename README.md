@@ -83,7 +83,7 @@ The **Tableau** node supports the following resources and operations:
 | Get | Get a single user by ID |
 | Get Many | Get many users on the site, with optional filtering and sorting |
 | Remove From Site | Remove a user from the site |
-| Update | Update the properties of a user (role, name, email, password, auth setting, etc.). Password update is only supported on Tableau Server with local authentication. Warning: due to an incompatibility with Conected Apps authentication, this operation will normally fail even though implemented correctly. Tableau has not provided a timeline for fixing this issue. |
+| Update | Update the properties of a user (role, name, email, password, auth setting, etc.). Password update is only supported on Tableau Server with local authentication. Warning: This operation is supported in API versions `3.27` and later, only. |
 
 ### VizQL Data Service
 | Operation | Description |
