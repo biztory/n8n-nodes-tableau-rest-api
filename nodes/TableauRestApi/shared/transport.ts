@@ -32,12 +32,14 @@ export function signJwt(credentials: TableauCredentials): string {
 		JSON.stringify({ alg: 'HS256', kid: secretId, iss: clientId }),
 	);
 
+	const now = Math.floor(Date.now() / 1000);
 	const payload = base64url(
 		JSON.stringify({
 			iss: clientId,
 			sub: username,
 			aud: 'tableau',
-			exp: Math.floor(Date.now() / 1000) + 600, // 10 minutes max
+			iat: now,
+			exp: now + 300,
 			jti: randomUUID(),
 			scp: scopeList,
 		}),
@@ -60,29 +62,30 @@ async function authenticate(
 	const baseUrl = serverUrl.replace(/\/+$/, '');
 	const signInUrl = `${baseUrl}/api/${apiVersion}/auth/signin`;
 
-	const response = (await context.helpers.httpRequest({
-		method: 'POST',
-		url: signInUrl,
-		headers: {
-			Accept: 'application/json',
-			'Content-Type': 'application/json',
-		},
-		body: {
-			credentials: {
-				jwt: jwt,
-				site: {
-					contentUrl: siteContentUrl,
+	let response: { credentials: { token: string; site: { id: string; contentUrl: string }; user: { id: string } } };
+	try {
+		response = (await context.helpers.httpRequest({
+			method: 'POST',
+			url: signInUrl,
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': 'application/json',
+			},
+			body: {
+				credentials: {
+					jwt: jwt,
+					site: {
+						contentUrl: siteContentUrl,
+					},
 				},
 			},
-		},
-		json: true,
-	})) as {
-		credentials: {
-			token: string;
-			site: { id: string; contentUrl: string };
-			user: { id: string };
-		};
-	};
+			json: true,
+		})) as typeof response;
+	} catch (error) {
+		const tableau = parseTableauError(error);
+		if (tableau) throw new Error(`Tableau sign-in failed — ${buildTableauErrorMessage(tableau)}`);
+		throw new Error(`Tableau sign-in request failed: ${(error as Error).message ?? error}`);
+	}
 
 	return {
 		token: response.credentials.token,
@@ -139,7 +142,9 @@ const TABLEAU_ERROR_GUIDANCE: Record<string, string> = {
 	'401002':
 		'Credentials were rejected by Tableau. Verify that your Connected App ' +
 		'Client ID, Secret ID, and Secret Value are correct, and that the ' +
-		'Connected App is enabled on the site.',
+		'Connected App is enabled on the site. If running inside Docker, also ' +
+		'check that the container clock is synchronised — clock drift causes JWT ' +
+		'validation to fail, especially against Tableau Cloud.',
 };
 
 /**
@@ -149,9 +154,23 @@ const TABLEAU_ERROR_GUIDANCE: Record<string, string> = {
  */
 function parseTableauError(error: unknown): TableauErrorBody | undefined {
 	try {
-		// n8n's httpRequest surfaces the response body at error.response.data
+		// n8n's httpRequest surfaces the response body at error.response.data.
+		// For binary requests (encoding:'arraybuffer'), axios returns a Buffer rather
+		// than parsed JSON, so we decode it manually before looking for the error key.
 		const data = (error as Record<string, Record<string, unknown>>).response?.data;
-		const body = (data as Record<string, unknown> | undefined)?.error;
+
+		let resolved: Record<string, unknown> | undefined;
+		if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
+			try {
+				resolved = JSON.parse(Buffer.from(data as ArrayBuffer).toString('utf-8')) as Record<string, unknown>;
+			} catch {
+				return undefined;
+			}
+		} else {
+			resolved = data as Record<string, unknown> | undefined;
+		}
+
+		const body = resolved?.error;
 		if (!body || typeof body !== 'object') return undefined;
 
 		const { code, summary, detail } = body as Record<string, unknown>;
