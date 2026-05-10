@@ -1,4 +1,5 @@
-export interface TableauCredentials {
+export interface TableauConnectedAppCredentials {
+	authMethod: 'connectedApp';
 	serverUrl: string;
 	siteContentUrl: string;
 	clientId: string;
@@ -8,6 +9,17 @@ export interface TableauCredentials {
 	apiVersion: string;
 	scopes: string;
 }
+
+export interface TableauPatCredentials {
+	authMethod: 'pat';
+	serverUrl: string;
+	siteContentUrl: string;
+	patName: string;
+	patSecret: string;
+	apiVersion: string;
+}
+
+export type TableauCredentials = TableauConnectedAppCredentials | TableauPatCredentials;
 
 export interface TableauAuthToken {
 	token: string;

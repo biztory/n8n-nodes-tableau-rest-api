@@ -54,9 +54,40 @@ export class TableauRestApi implements INodeType {
 			{
 				name: 'tableauRestApiApi',
 				required: true,
+				displayOptions: {
+					show: {
+						authentication: ['connectedApp'],
+					},
+				},
+			},
+			{
+				name: 'tableauRestApiPatApi',
+				required: true,
+				displayOptions: {
+					show: {
+						authentication: ['pat'],
+					},
+				},
 			},
 		],
 		properties: [
+			{
+				displayName: 'Authentication',
+				name: 'authentication',
+				type: 'options',
+				noDataExpression: true,
+				options: [
+					{
+						name: 'Connected App (JWT)',
+						value: 'connectedApp',
+					},
+					{
+						name: 'Personal Access Token',
+						value: 'pat',
+					},
+				],
+				default: 'connectedApp',
+			},
 			{
 				displayName: 'Resource',
 				name: 'resource',
@@ -98,16 +129,19 @@ export class TableauRestApi implements INodeType {
 				const datasourceLuid = this.getNodeParameter('datasourceLuid') as string;
 				if (!datasourceLuid) return [];
 
-				const credentials = await this.getCredentials('tableauRestApiApi');
+				const authentication = this.getNodeParameter('authentication') as string;
+				const credentialName = authentication === 'pat' ? 'tableauRestApiPatApi' : 'tableauRestApiApi';
+
+				const credentials = await this.getCredentials(credentialName);
 				const serverUrl = (credentials.serverUrl as string).replace(/\/+$/, '');
 
 				// TypeScript's this-parameter constraint on httpRequestWithAuthentication is checked
-			// against the receiver (this.helpers), not the outer this. Using .call() with an
-			// explicit IAllExecuteFunctions context satisfies the constraint at the type level;
-			// at runtime n8n's helpers are already bound to the correct execution context.
-			const response = (await this.helpers.httpRequestWithAuthentication.call(
+				// against the receiver (this.helpers), not the outer this. Using .call() with an
+				// explicit IAllExecuteFunctions context satisfies the constraint at the type level;
+				// at runtime n8n's helpers are already bound to the correct execution context.
+				const response = (await this.helpers.httpRequestWithAuthentication.call(
 					this as IAllExecuteFunctions,
-					'tableauRestApiApi',
+					credentialName,
 					{
 						method: 'POST',
 						url: `${serverUrl}/api/v1/vizql-data-service/read-metadata`,
@@ -129,9 +163,33 @@ export class TableauRestApi implements INodeType {
 		const inputItems = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
 
-		const credentials = (await this.getCredentials(
-			'tableauRestApiApi',
-		)) as unknown as TableauCredentials;
+		const authentication = this.getNodeParameter('authentication', 0) as string;
+		let credentials: TableauCredentials;
+
+		if (authentication === 'pat') {
+			const rawCreds = await this.getCredentials('tableauRestApiPatApi');
+			credentials = {
+				authMethod: 'pat',
+				serverUrl: rawCreds.serverUrl as string,
+				siteContentUrl: rawCreds.siteContentUrl as string,
+				patName: rawCreds.patName as string,
+				patSecret: rawCreds.patSecret as string,
+				apiVersion: rawCreds.apiVersion as string,
+			};
+		} else {
+			const rawCreds = await this.getCredentials('tableauRestApiApi');
+			credentials = {
+				authMethod: 'connectedApp',
+				serverUrl: rawCreds.serverUrl as string,
+				siteContentUrl: rawCreds.siteContentUrl as string,
+				clientId: rawCreds.clientId as string,
+				secretId: rawCreds.secretId as string,
+				secretValue: rawCreds.secretValue as string,
+				username: rawCreds.username as string,
+				apiVersion: rawCreds.apiVersion as string,
+				scopes: rawCreds.scopes as string,
+			};
+		}
 
 		for (let i = 0; i < inputItems.length; i++) {
 			try {

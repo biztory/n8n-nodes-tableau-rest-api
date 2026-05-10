@@ -8,7 +8,9 @@ This is an n8n community node. It lets you use the [Tableau Server/Cloud REST AP
 [Operations](#operations)  
 [Compatibility](#compatibility)  
 [Usage](#usage)  
-[Resources](#resources)  
+[Resources](#resources)
+
+
 
 ## Installation
 
@@ -103,19 +105,59 @@ The node uses Tableau REST API version **3.24** by default, which is compatible 
 
 ### Setting up credentials
 
-This node authenticates using a **Tableau Connected App** with JWT (JSON Web Token) authentication. To set this up:
+The node supports two authentication methods. Select the one that fits your use case on the **Authentication** dropdown of the Tableau node, then create the matching credential type.
 
-1. In Tableau, go to **Settings > Connected Apps** and create a new Connected App with direct trust enabled.
-2. Generate a secret for the Connected App and copy the **Client ID**, **Secret ID**, and **Secret Value**.
-3. In n8n, create a new **Tableau REST API** credential and fill in:
+#### Connected App (JWT)
+
+Connected Apps authenticate by signing a short-lived JWT with a secret you generate in Tableau. This is the recommended method when you need concurrent workflow executions or fine-grained scope control.
+
+To set up:
+
+1. In Tableau, go to **Settings > Connected Apps** and create a new Connected App with **Direct Trust** enabled.
+2. Generate a secret and copy the **Client ID**, **Secret ID**, and **Secret Value**.
+3. In n8n, create a new **Tableau Connected App API** credential and fill in:
    - **Server URL** — the base URL of your Tableau Server or Tableau Cloud instance (e.g. `https://10ax.online.tableau.com`)
-   - **Site Content URL** — the content URL of your site (the part after `/site/` in the browser URL). Leave empty for the default site.
+   - **Site Content URL** — the part after `/site/` in your site's browser URL. Leave empty for the default site.
    - **Connected App Client ID**, **Secret ID**, and **Secret Value** — from the Connected App you created.
    - **Username** — the Tableau username (email address) the node will act as.
-   - **API Version** — defaults to `3.24`. Change this only if you need to target a specific Tableau REST API version.
-   - **Scopes** — the JWT scopes to request, as a comma-separated list (e.g. `tableau:content:read,tableau:content:write`). Defaults to `tableau:content:read`.
+   - **API Version** — defaults to `3.24`. Change only if you need a specific version.
+   - **Scopes** — comma-separated JWT scopes (e.g. `tableau:content:read,tableau:content:write`). Defaults to `tableau:content:read`.
 
-For more information on setting up Connected Apps, see the [Tableau Connected Apps documentation](https://help.tableau.com/current/online/en-us/connected_apps_direct.htm).
+Considerations:
+- Connected Apps require Tableau Server 2022.1+ or Tableau Cloud. Some administrative operations on Tableau Server may require a non-scoped session and will not work with a Connected App token; use a Personal Access Token in those cases.
+- Supports concurrent workflow executions without interference.
+
+For more details see the [Tableau Connected Apps documentation](https://help.tableau.com/current/online/en-us/connected_apps_direct.htm).
+
+#### Personal Access Token (PAT)
+
+Personal Access Tokens are long-lived tokens you create directly in your Tableau account settings. They are compatible with all Tableau REST API endpoints on both Tableau Server and Tableau Cloud.
+
+To set up:
+
+1. In Tableau, go to your account settings and create a new Personal Access Token. Copy the **Token Name** and **Token Secret** shown at creation time — the secret is not shown again.
+2. In n8n, create a new **Tableau Personal Access Token API** credential and fill in:
+   - **Server URL** — the base URL of your Tableau Server or Tableau Cloud instance.
+   - **Site Content URL** — the part after `/site/` in your site's browser URL. Leave empty for the default site.
+   - **Personal Access Token Name** and **Personal Access Token Secret** — from the token you created.
+   - **API Version** — defaults to `3.24`.
+
+Considerations:
+- **PATs do not support concurrent use.** Signing in with a PAT invalidates any existing session for that token. If multiple workflow executions run simultaneously using the same PAT, they will interfere with each other — each new sign-in will invalidate the previous one, causing the earlier execution to fail mid-run. Use a Connected App if your workflows run concurrently.
+- PATs have a configurable maximum age and expire automatically. Rotate them as needed in your Tableau account settings.
+
+For more details see the [Tableau Personal Access Tokens documentation](https://help.tableau.com/current/online/en-us/security_personal_access_tokens.htm).
+
+#### Choosing between the two
+
+| | Connected App | Personal Access Token |
+|---|---|---|
+| Setup complexity | Requires a Connected App configured by an admin | Self-service in account settings |
+| Concurrent workflow executions | Yes | No — concurrent sign-ins invalidate each other |
+| Compatible with all REST API endpoints | Most (some admin operations on Tableau Server may require a non-scoped session) | Yes |
+| Fine-grained scope control | Yes | No |
+| Tableau Cloud | Yes | Yes |
+| Tableau Server | 2022.1+ | All supported versions |
 
 ### Authentication token caching
 
@@ -149,4 +191,5 @@ _New to n8n? [Try it out](https://docs.n8n.io/try-it-out/) to get started and le
 * [n8n community nodes documentation](https://docs.n8n.io/integrations/#community-nodes)
 * [Tableau REST API reference](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api.htm)
 * [Tableau Connected Apps (JWT auth) documentation](https://help.tableau.com/current/online/en-us/connected_apps_direct.htm)
+* [Tableau Personal Access Tokens documentation](https://help.tableau.com/current/online/en-us/security_personal_access_tokens.htm)
 * [Tableau VizQL Data Service documentation](https://help.tableau.com/current/api/vizql-data-service/en-us/index.html)

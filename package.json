@@ -36,7 +36,8 @@
         "n8nNodesApiVersion": 1,
         "strict": true,
         "credentials": [
-            "dist/credentials/TableauRestApiApi.credentials.js"
+            "dist/credentials/TableauRestApiApi.credentials.js",
+            "dist/credentials/TableauRestApiPatApi.credentials.js"
         ],
         "nodes": [
             "dist/nodes/TableauRestApi/TableauRestApi.node.js"

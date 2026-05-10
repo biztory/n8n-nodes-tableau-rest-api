@@ -47,10 +47,32 @@ function signJwt(credentials: {
 	return `${header}.${payload}.${signature}`;
 }
 
+function parseTableauSignInError(status: number, body: string): string {
+	try {
+		const data = JSON.parse(body) as { error?: { code?: string; summary?: string; detail?: string } };
+		const err = data.error;
+		if (!err) return `HTTP ${status}`;
+		const code = err.code ?? '';
+		const summary = err.summary ?? 'Unknown error';
+		const detail = err.detail ? ` — ${err.detail}` : '';
+		if (code === '401002') {
+			return (
+				`Tableau error ${code}: Credentials were rejected. Verify that your Connected App ` +
+				`Client ID, Secret ID, and Secret Value are correct, and that the Connected App is ` +
+				`enabled on the site. If running inside Docker, also check that the container clock ` +
+				`is synchronised — clock drift causes JWT validation to fail against Tableau Cloud.`
+			);
+		}
+		return `Tableau error ${code}: ${summary}${detail}`;
+	} catch {
+		return `HTTP ${status}`;
+	}
+}
+
 export class TableauRestApiApi implements ICredentialType {
 	name = 'tableauRestApiApi';
 
-	displayName = 'Tableau REST API';
+	displayName = 'Tableau Connected App API';
 
 	icon: Icon = 'file:../icons/tableau.svg';
 
@@ -61,13 +83,8 @@ export class TableauRestApiApi implements ICredentialType {
 		credentials: ICredentialDataDecryptedObject,
 		requestOptions: IHttpRequestOptions,
 	): Promise<IHttpRequestOptions> => {
-		// /serverinfo is a public endpoint that explicitly rejects scoped session
-		// tokens. Return the request unmodified so the credential test can reach it.
-		if (typeof requestOptions.url === 'string' && requestOptions.url.endsWith('/serverinfo')) {
-			return requestOptions;
-		}
-
 		const baseUrl = (credentials.serverUrl as string).replace(/\/+$/, '');
+		const signinPath = `/api/${credentials.apiVersion as string}/auth/signin`;
 		const jwt = signJwt(credentials as {
 			clientId: string;
 			secretId: string;
@@ -75,21 +92,37 @@ export class TableauRestApiApi implements ICredentialType {
 			username: string;
 			scopes: string;
 		});
+		const signinBody = {
+			credentials: { jwt, site: { contentUrl: credentials.siteContentUrl } },
+		};
 
-		const signInResponse = await fetch(
-			`${baseUrl}/api/${credentials.apiVersion as string}/auth/signin`,
-			{
+		// Credential test: the test request IS the sign-in call. We populate the
+		// body here so n8n sends it directly to Tableau. Tableau's response — success
+		// (200) or a structured error (401 with code/summary/detail) — is shown as-is
+		// in the credential test UI, giving users actionable feedback.
+		if (typeof requestOptions.url === 'string' && requestOptions.url.includes('/auth/signin')) {
+			return {
+				...requestOptions,
 				method: 'POST',
-				headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					credentials: { jwt, site: { contentUrl: credentials.siteContentUrl } },
-				}),
-			},
-		);
+				headers: {
+					...(requestOptions.headers as Record<string, string>),
+					Accept: 'application/json',
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(signinBody),
+			};
+		}
+
+		// Normal request: sign in via fetch to get a session token, then inject it.
+		const signInResponse = await fetch(`${baseUrl}${signinPath}`, {
+			method: 'POST',
+			headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+			body: JSON.stringify(signinBody),
+		});
 
 		if (!signInResponse.ok) {
 			const text = await signInResponse.text();
-			throw new Error(`Tableau authentication failed (${signInResponse.status}): ${text}`);
+			throw new Error(`Tableau Connected App authentication failed: ${parseTableauSignInError(signInResponse.status, text)}`);
 		}
 
 		const data = (await signInResponse.json()) as { credentials?: { token?: string } };
@@ -107,12 +140,13 @@ export class TableauRestApiApi implements ICredentialType {
 		};
 	};
 
-	// Tests server connectivity and that the API version is valid.
-	// Full JWT auth is verified on first use — JWT errors surface with
-	// descriptive messages via the TABLEAU_ERROR_GUIDANCE map in transport.ts.
+	// The test POSTs directly to /auth/signin with the JWT body (populated by
+	// authenticate above). Tableau's structured error response is surfaced to the
+	// user when credentials are wrong, giving specific error codes and detail.
 	test: ICredentialTestRequest = {
 		request: {
-			url: '={{$credentials.serverUrl.replace(/\\/+$/, "") + "/api/" + $credentials.apiVersion + "/serverinfo"}}',
+			method: 'POST',
+			url: '={{$credentials.serverUrl.replace(/\\/+$/, "") + "/api/" + $credentials.apiVersion + "/auth/signin"}}',
 		},
 	};
 

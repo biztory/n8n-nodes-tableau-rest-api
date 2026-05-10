@@ -5,10 +5,12 @@ import type {
 	IHttpRequestMethods,
 	IHttpRequestOptions,
 } from 'n8n-workflow';
-import type { TableauAuthToken, TableauCredentials } from './types';
+import type { TableauAuthToken, TableauConnectedAppCredentials, TableauCredentials } from './types';
 
 
-const TABLEAU_AUTH_CACHE_KEY = 'tableauRestApiAuth';
+function getCacheKey(credentials: TableauCredentials): string {
+	return `tableauRestApiAuth_${credentials.authMethod}`;
+}
 
 /** How many minutes before actual expiry we consider the token stale */
 const TOKEN_EXPIRY_BUFFER_MINUTES = 10;
@@ -20,7 +22,7 @@ function base64url(data: string): string {
 	return Buffer.from(data).toString('base64url');
 }
 
-export function signJwt(credentials: TableauCredentials): string {
+function signJwt(credentials: TableauConnectedAppCredentials): string {
 	const { clientId, secretId, secretValue, username, scopes } = credentials;
 
 	const scopeList = scopes
@@ -57,10 +59,19 @@ async function authenticate(
 	credentials: TableauCredentials,
 ): Promise<TableauAuthToken> {
 	const { serverUrl, siteContentUrl, apiVersion } = credentials;
-	const jwt = signJwt(credentials);
-
 	const baseUrl = serverUrl.replace(/\/+$/, '');
 	const signInUrl = `${baseUrl}/api/${apiVersion}/auth/signin`;
+
+	const signInBody =
+		credentials.authMethod === 'connectedApp'
+			? { credentials: { jwt: signJwt(credentials), site: { contentUrl: siteContentUrl } } }
+			: {
+					credentials: {
+						personalAccessTokenName: credentials.patName,
+						personalAccessTokenSecret: credentials.patSecret,
+						site: { contentUrl: siteContentUrl },
+					},
+				};
 
 	let response: { credentials: { token: string; site: { id: string; contentUrl: string }; user: { id: string } } };
 	try {
@@ -71,14 +82,7 @@ async function authenticate(
 				Accept: 'application/json',
 				'Content-Type': 'application/json',
 			},
-			body: {
-				credentials: {
-					jwt: jwt,
-					site: {
-						contentUrl: siteContentUrl,
-					},
-				},
-			},
+			body: signInBody,
 			json: true,
 		})) as typeof response;
 	} catch (error) {
@@ -99,32 +103,32 @@ async function authenticate(
 /**
  * Get a cached auth token or sign in to obtain a new one.
  * The token is shared across all Tableau REST API nodes in the same workflow
- * execution via workflow static data.
+ * execution via workflow static data. Separate cache keys are used per auth
+ * method so Connected App and PAT tokens never overwrite each other.
  */
 export async function getAuthToken(
 	context: IExecuteFunctions,
 	credentials: TableauCredentials,
 ): Promise<TableauAuthToken> {
 	const staticData = context.getWorkflowStaticData('global');
+	const cacheKey = getCacheKey(credentials);
 
-	const cached = staticData[TABLEAU_AUTH_CACHE_KEY] as
-		| TableauAuthToken
-		| undefined;
+	const cached = staticData[cacheKey] as TableauAuthToken | undefined;
 	if (cached && cached.expiresAt > Date.now()) {
 		return cached;
 	}
 
 	const authToken = await authenticate(context, credentials);
-	staticData[TABLEAU_AUTH_CACHE_KEY] = authToken;
+	staticData[cacheKey] = authToken;
 	return authToken;
 }
 
 /**
  * Invalidate the cached auth token so the next call will re-authenticate.
  */
-function invalidateAuthToken(context: IExecuteFunctions): void {
+function invalidateAuthToken(context: IExecuteFunctions, credentials: TableauCredentials): void {
 	const staticData = context.getWorkflowStaticData('global');
-	delete staticData[TABLEAU_AUTH_CACHE_KEY];
+	delete staticData[getCacheKey(credentials)];
 }
 
 interface TableauErrorBody {
@@ -218,7 +222,7 @@ async function withAuthRetry<T>(
 
 		if (tableau) {
 			if (tableau.code === '401000') {
-				invalidateAuthToken(context);
+				invalidateAuthToken(context, credentials);
 				authToken = await getAuthToken(context, credentials);
 				return await makeRequest(authToken);
 			}
@@ -402,7 +406,8 @@ export async function tableauSignOut(
 	credentials: TableauCredentials,
 ): Promise<{ signedOut: boolean }> {
 	const staticData = context.getWorkflowStaticData('global');
-	const cached = staticData[TABLEAU_AUTH_CACHE_KEY] as TableauAuthToken | undefined;
+	const cacheKey = getCacheKey(credentials);
+	const cached = staticData[cacheKey] as TableauAuthToken | undefined;
 
 	let signedOut = false;
 
@@ -424,7 +429,7 @@ export async function tableauSignOut(
 	}
 
 	// Always clear the cache so the next node re-authenticates.
-	delete staticData[TABLEAU_AUTH_CACHE_KEY];
+	delete staticData[cacheKey];
 
 	return { signedOut };
 }
