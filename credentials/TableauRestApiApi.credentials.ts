@@ -202,7 +202,9 @@ export class TableauRestApiApi implements ICredentialType {
 			default: '',
 			required: true,
 			placeholder: 'user@example.com',
-			description: 'The Tableau username (email) to authenticate as',
+			description:
+				'Default Tableau username (email) to authenticate as. Can be overridden per node ' +
+				'using the <strong>Impersonate User</strong> field to act as a different user.',
 		},
 		{
 			displayName: 'API Version',

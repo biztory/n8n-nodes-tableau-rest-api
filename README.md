@@ -119,13 +119,14 @@ To set up:
    - **Server URL** — the base URL of your Tableau Server or Tableau Cloud instance (e.g. `https://10ax.online.tableau.com`)
    - **Site Content URL** — the part after `/site/` in your site's browser URL. Leave empty for the default site.
    - **Connected App Client ID**, **Secret ID**, and **Secret Value** — from the Connected App you created.
-   - **Username** — the Tableau username (email address) the node will act as.
+   - **Username** — the default Tableau username (email address) the node will act as. Individual nodes can override this to impersonate a different user — see [Impersonating users](#impersonating-users).
    - **API Version** — defaults to `3.24`. Change only if you need a specific version.
    - **Scopes** — comma-separated JWT scopes (e.g. `tableau:content:read,tableau:content:write`). Defaults to `tableau:content:read`.
 
 Considerations:
 - Connected Apps require Tableau Server 2022.1+ or Tableau Cloud. Some administrative operations on Tableau Server may require a non-scoped session and will not work with a Connected App token; use a Personal Access Token in those cases.
 - Supports concurrent workflow executions without interference.
+- Supports impersonation.
 
 For more details see the [Tableau Connected Apps documentation](https://help.tableau.com/current/online/en-us/connected_apps_direct.htm).
 
@@ -145,6 +146,7 @@ To set up:
 Considerations:
 - **PATs do not support concurrent use.** Signing in with a PAT invalidates any existing session for that token. If multiple workflow executions run simultaneously using the same PAT, they will interfere with each other — each new sign-in will invalidate the previous one, causing the earlier execution to fail mid-run. Use a Connected App if your workflows run concurrently.
 - PATs have a configurable maximum age and expire automatically. Rotate them as needed in your Tableau account settings.
+- Does not support impersonation.
 
 For more details see the [Tableau Personal Access Tokens documentation](https://help.tableau.com/current/online/en-us/security_personal_access_tokens.htm).
 
@@ -156,8 +158,26 @@ For more details see the [Tableau Personal Access Tokens documentation](https://
 | Concurrent workflow executions | Yes | No — concurrent sign-ins invalidate each other |
 | Compatible with all REST API endpoints | Most (some admin operations on Tableau Server may require a non-scoped session) | Yes |
 | Fine-grained scope control | Yes | No |
+| Impersonation | Yes | No |
 | Tableau Cloud | Yes | Yes |
 | Tableau Server | 2022.1+ | All supported versions |
+
+### Impersonating users
+
+When using **Connected App (JWT)** authentication, Connected Apps are designed to let a site administrator act on behalf of any user on the site. The credential's **Username** field sets the default user, but you can override it per node using the **Impersonate User** field that appears directly below the **Authentication** dropdown.
+
+This lets a single credential power workflows that touch content as multiple users — for example, downloading views as each member of a team, or performing actions on behalf of a specific content owner.
+
+The **Impersonate User** field supports [n8n expressions](https://docs.n8n.io/code/expressions/), so you can set it dynamically from upstream data (e.g. loop over a list of usernames and impersonate each one in turn).
+
+A few things to be aware of:
+
+- **Requires site admin privileges.** The Connected App must be created by a Tableau Server administrator or Tableau Cloud site administrator. Only a site admin can issue tokens on behalf of other users.
+- **Scopes still apply.** The impersonated session is limited by the scopes configured on the credential. Expand the scopes (e.g. add `tableau:content:write`) if the impersonated user needs to perform write operations.
+- **Separate token per user.** Each distinct impersonated username gets its own cached token within a workflow run, so switching between users in a single execution is safe.
+- **Security.** Whoever has access to the Connected App credential in n8n can impersonate any Tableau user. Share the credential only with users who should have that level of access. Use n8n's project-based access control to scope credential visibility appropriately.
+
+This field is not available when using **Personal Access Token** authentication, as PATs always authenticate as the token owner.
 
 ### Authentication token caching
 

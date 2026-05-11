@@ -9,6 +9,9 @@ import type { TableauAuthToken, TableauConnectedAppCredentials, TableauCredentia
 
 
 function getCacheKey(credentials: TableauCredentials): string {
+	if (credentials.authMethod === 'connectedApp') {
+		return `tableauRestApiAuth_connectedApp_${credentials.username}`;
+	}
 	return `tableauRestApiAuth_${credentials.authMethod}`;
 }
 

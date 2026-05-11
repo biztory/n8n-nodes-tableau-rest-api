@@ -33,7 +33,7 @@ import {
 	vizqlDataServiceRequest,
 } from './shared/transport';
 import { buildVfFilters, parseCsvToJson } from './resources/view/download';
-import type { TableauCredentials } from './shared/types';
+import type { TableauConnectedAppCredentials, TableauCredentials } from './shared/types';
 
 export class TableauRestApi implements INodeType {
 	description: INodeTypeDescription = {
@@ -87,6 +87,20 @@ export class TableauRestApi implements INodeType {
 					},
 				],
 				default: 'connectedApp',
+			},
+			{
+				displayName: 'Impersonate User',
+				name: 'impersonateUsername',
+				type: 'string',
+				default: '',
+				placeholder: 'user@example.com',
+				description:
+					'Authenticate as a different Tableau user for this node. Leave empty to use the credential\'s default username. Requires site administrator privileges on the Connected App.',
+				displayOptions: {
+					show: {
+						authentication: ['connectedApp'],
+					},
+				},
 			},
 			{
 				displayName: 'Resource',
@@ -164,11 +178,11 @@ export class TableauRestApi implements INodeType {
 		const returnData: INodeExecutionData[] = [];
 
 		const authentication = this.getNodeParameter('authentication', 0) as string;
-		let credentials: TableauCredentials;
+		let baseCredentials: TableauCredentials;
 
 		if (authentication === 'pat') {
 			const rawCreds = await this.getCredentials('tableauRestApiPatApi');
-			credentials = {
+			baseCredentials = {
 				authMethod: 'pat',
 				serverUrl: rawCreds.serverUrl as string,
 				siteContentUrl: rawCreds.siteContentUrl as string,
@@ -178,7 +192,7 @@ export class TableauRestApi implements INodeType {
 			};
 		} else {
 			const rawCreds = await this.getCredentials('tableauRestApiApi');
-			credentials = {
+			baseCredentials = {
 				authMethod: 'connectedApp',
 				serverUrl: rawCreds.serverUrl as string,
 				siteContentUrl: rawCreds.siteContentUrl as string,
@@ -192,6 +206,17 @@ export class TableauRestApi implements INodeType {
 		}
 
 		for (let i = 0; i < inputItems.length; i++) {
+			// Resolve effective credentials, applying per-item username override when set.
+			let credentials: TableauCredentials;
+			if (authentication === 'connectedApp') {
+				const impersonateUsername = this.getNodeParameter('impersonateUsername', i, '') as string;
+				credentials = impersonateUsername
+					? { ...(baseCredentials as TableauConnectedAppCredentials), username: impersonateUsername }
+					: baseCredentials;
+			} else {
+				credentials = baseCredentials;
+			}
+
 			try {
 				const resource = this.getNodeParameter('resource', i) as string;
 				const operation = this.getNodeParameter('operation', i) as string;
